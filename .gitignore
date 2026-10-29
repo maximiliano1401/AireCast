@@ -1,0 +1,29 @@
+# --- Dependencias (se reinstalan) ---
+# npm install
+node_modules/
+# python -m venv .venv && .venv\Scripts\pip install -r requirements.txt
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# --- Artefactos de build (se regeneran) ---
+# npm run build:bridge  -> build/bridge, build/ffmpeg, build/pyinstaller
+build/
+# npm run dist (electron-builder)
+release/
+dist/
+*.spec
+
+# --- Datos locales / secretos ---
+# Credenciales de emparejamiento AirPlay generadas por bridge.py
+credentials.json
+*.log
+
+# --- Sistema / editor ---
+Thumbs.db
+Desktop.ini
+.DS_Store
+.vscode/
+.idea/
+.env

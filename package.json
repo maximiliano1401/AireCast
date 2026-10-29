@@ -1,0 +1,57 @@
+{
+  "name": "airecast",
+  "productName": "AireCast",
+  "version": "0.1.0",
+  "description": "AireCast MVP: emisor AirPlay de escritorio",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "node launch.js",
+    "build:bridge": "powershell -NoProfile -ExecutionPolicy Bypass -File build-bridge.ps1",
+    "dist": "npm run build:bridge && electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^26.18.0"
+  },
+  "allowScripts": {
+    "electron@33.4.11": true
+  },
+  "build": {
+    "appId": "com.max.airecast",
+    "productName": "AireCast",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/bridge",
+        "to": "bridge"
+      },
+      {
+        "from": "build/ffmpeg",
+        "to": "ffmpeg"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "AireCast"
+    },
+    "portable": {
+      "artifactName": "AireCast-${version}-portable.exe"
+    }
+  }
+}
