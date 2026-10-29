@@ -192,6 +192,8 @@ class Bridge:
             raise RuntimeError("Empareja primero la TV (hace falta el PIN)")
         session = MirrorSession(str(conf.address), cred, port=conf.get_service(Protocol.AirPlay).port)
         await session.start()
+        emit({"event": "info", "message": "Audio: activo" if session.audio else
+              "Audio: no disponible, solo vídeo (detalles en airplay-debug.log)"})
 
         async def run():
             try:

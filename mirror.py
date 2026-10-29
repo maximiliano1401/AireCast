@@ -8,14 +8,22 @@ con receptores que soportan emparejamiento HomeKit (Roku, Samsung, LG…):
   3. SETUP de stream type 110 con streamConnectionID -> la TV responde dataPort.
   4. RECORD de stream: le indica al decodificador de la TV que comience a procesar.
   5. TCP a dataPort: cabecera de 128 bytes + payload cifrado con ChaCha20-Poly1305.
+
+Audio (experimental): SETUP de stream type 96 (audio en tiempo real, como el RAOP de AirPlay 2
+de pyatv) en la misma sesión. El audio del sistema se captura con WASAPI loopback (miniaudio)
+y se envía por UDP como RTP con PCM 16 bits, cifrado con ChaCha20 usando la clave `shk` que
+nosotros mismos enviamos en el SETUP. Paquetes de sync por el controlPort ligan RTP <-> NTP.
 """
 
+import array
 import asyncio
 import logging
+import os
 import random
 import struct
 import uuid
 
+import miniaudio
 from pyatv.auth.hap_channel import setup_channel
 from pyatv.auth.hap_pairing import parse_credentials
 from pyatv.protocols.airplay.ap2_session import (
@@ -29,6 +37,7 @@ from pyatv.protocols.airplay.ap2_session import (
 from pyatv.protocols.airplay.auth import verify_connection
 from pyatv.protocols.airplay.channels import EventChannel
 from pyatv.protocols.raop import timing
+from pyatv.protocols.raop.packets import AudioPacketHeader, SyncPacket
 from pyatv.protocols.raop.protocols import TimingServer
 from pyatv.support.chacha20 import Chacha20Cipher8byteNonce
 from pyatv.support.http import decode_bplist_from_body, http_connect
@@ -40,6 +49,14 @@ MIRROR_STREAM_TYPE = 110
 PACKET_VIDEO = 0
 PACKET_CODEC = 1
 TIMESTAMP_NAMES = ["SubSu", "BePxT", "AfPxT", "BefEn", "EmEnc"]
+
+AUDIO_STREAM_TYPE = 96
+AUDIO_RATE = 44100
+AUDIO_CHANNELS = 2
+AUDIO_SPF = 352  # muestras por paquete
+AUDIO_PACKET_BYTES = AUDIO_SPF * AUDIO_CHANNELS * 2
+AUDIO_LATENCY = AUDIO_RATE // 40  # 25 ms: si va atrasado, bajar; si va adelantado o se corta, subir
+AUDIO_MAX_BUFFER = AUDIO_RATE // 25 * AUDIO_CHANNELS * 2  # descarta audio con >40 ms de retraso
 
 SENDER_INFO = {
     "model": "iPad5,3",
@@ -90,11 +107,171 @@ def split_annexb(buf):
     return nals, b"\x00\x00\x00\x01" + bytes(buf[start:])
 
 
+class LoopbackDevice(miniaudio.CaptureDevice):
+    """Captura lo que suena en el dispositivo de salida predeterminado (WASAPI loopback).
+
+    miniaudio.CaptureDevice solo abre micrófonos; esto replica su __init__ con el tipo loopback.
+    """
+
+    def __init__(self, sample_rate=AUDIO_RATE, nchannels=AUDIO_CHANNELS, buffersize_msec=10):
+        miniaudio.AbstractDevice.__init__(self)
+        ffi, lib = miniaudio.ffi, miniaudio.lib
+        self.format = miniaudio.SampleFormat.SIGNED16
+        self.sample_width = 2
+        self.nchannels = nchannels
+        self.sample_rate = sample_rate
+        self.buffersize_msec = buffersize_msec
+        self._ffi_handle = ffi.new_handle(self)
+        self._devconfig = lib.ma_device_config_init(lib.ma_device_type_loopback)
+        self._devconfig.sampleRate = sample_rate
+        self._devconfig.capture.channels = nchannels
+        self._devconfig.capture.format = self.format.value
+        self._devconfig.capture.pDeviceID = ffi.NULL
+        self._devconfig.periodSizeInMilliseconds = buffersize_msec
+        self._devconfig.pUserData = self._ffi_handle
+        self._devconfig.dataCallback = lib._internal_data_callback
+        self._devconfig.stopCallback = lib._internal_stop_callback
+        self.callback_generator = None
+        self._context = self._make_context([miniaudio.Backend.WASAPI])
+        result = lib.ma_device_init(self._context, ffi.addressof(self._devconfig), self._device)
+        if result != lib.MA_SUCCESS:
+            raise miniaudio.MiniaudioError("no se pudo abrir la captura loopback", result)
+        self.backend = "wasapi"
+
+
+class _ControlProtocol(asyncio.DatagramProtocol):
+    """Socket del controlPort: envía sync e ignora las peticiones de retransmisión."""
+
+    def datagram_received(self, data, addr):
+        _LOGGER.debug("controlPort recibió %d bytes (retransmisión no soportada)", len(data))
+
+
+class AudioStream:
+    """Flujo de audio en tiempo real (type 96) dentro de una sesión de duplicado."""
+
+    def __init__(self, session):
+        self.session = session
+        self.key = os.urandom(32)
+        self.ssrc = random.randint(1, 2**32 - 1)
+        self.cipher = Chacha20Cipher8byteNonce(self.key, self.key)
+        self.control = None
+        self.data = None
+        self.data_port = None
+        self.control_port = None
+        self.device = None
+        self._pcm = bytearray()
+        self._task = None
+        self._seq = random.randint(0, 2**16 - 1)
+
+    async def setup(self):
+        loop = asyncio.get_running_loop()
+        local_ip = self.session.connection.local_ip
+        self.control, _ = await loop.create_datagram_endpoint(
+            _ControlProtocol, local_addr=(local_ip, 0))
+        resp = await self.session._setup({"streams": [{
+            "type": AUDIO_STREAM_TYPE,
+            "ct": 1,  # PCM sin comprimir (16 bits big-endian)
+            "audioFormat": 0x800,  # PCM 44100/16/2
+            "audioMode": "default",
+            "spf": AUDIO_SPF,
+            "sr": AUDIO_RATE,
+            "shk": self.key,
+            "controlPort": self.control.get_extra_info("sockname")[1],
+            "isMedia": True,
+            "usingScreen": True,
+            "latencyMin": AUDIO_LATENCY,
+            "latencyMax": AUDIO_LATENCY * 4,
+            "supportsDynamicStreamID": False,
+            "streamConnectionID": self.ssrc,
+        }]})
+        _LOGGER.debug("SETUP de audio: %s", resp)
+        stream = resp["streams"][0]
+        self.data_port = stream["dataPort"]
+        self.control_port = stream.get("controlPort")
+        self.data, _ = await loop.create_datagram_endpoint(
+            asyncio.DatagramProtocol, remote_addr=(self.session.connection.remote_ip, self.data_port))
+
+    def start(self):
+        loop = asyncio.get_running_loop()
+
+        def capture():
+            while True:
+                data = yield
+                loop.call_soon_threadsafe(self._pcm.extend, data)
+
+        gen = capture()
+        next(gen)
+        self.device = LoopbackDevice()
+        self.device.start(gen)
+        self._task = asyncio.ensure_future(self._send_loop())
+
+    def _take(self):
+        """Saca un paquete de PCM del búfer; rellena con silencio (WASAPI no entrega nada si no suena nada)."""
+        if len(self._pcm) > AUDIO_MAX_BUFFER:
+            del self._pcm[:len(self._pcm) - AUDIO_MAX_BUFFER]
+        chunk = bytes(self._pcm[:AUDIO_PACKET_BYTES])
+        del self._pcm[:AUDIO_PACKET_BYTES]
+        samples = array.array("h", chunk.ljust(AUDIO_PACKET_BYTES, b"\0"))
+        samples.byteswap()  # miniaudio entrega little-endian; AirPlay espera big-endian
+        return samples.tobytes()
+
+    async def _send_loop(self):
+        """Envía paquetes al ritmo del reloj, con la misma relación RTP <-> NTP que pyatv."""
+        loop = asyncio.get_running_loop()
+        start_ts = timing.ntp2ts(timing.ntp_now(), AUDIO_RATE)
+        started = loop.time()
+        sent = 0
+        next_sync = 0
+        try:
+            while True:
+                due = int((loop.time() - started) * AUDIO_RATE)
+                while sent + AUDIO_SPF <= due:
+                    rtptime = sent + AUDIO_LATENCY
+                    if sent >= next_sync:
+                        self._send_sync(start_ts + sent, rtptime, first=sent == 0)
+                        next_sync += AUDIO_RATE
+                    self._send_packet(self._take(), rtptime, first=sent == 0)
+                    sent += AUDIO_SPF
+                await asyncio.sleep(AUDIO_SPF / AUDIO_RATE)
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            _LOGGER.error("Error al enviar audio: %s", exc)
+
+    def _send_sync(self, head_ts, rtptime, first):
+        if not self.control_port:
+            return
+        sec, frac = timing.ntp2parts(timing.ts2ntp(head_ts, AUDIO_RATE))
+        packet = SyncPacket.encode(0x90 if first else 0x80, 0xD4, 0x0007,
+                                   rtptime - AUDIO_LATENCY, sec, frac, rtptime)
+        self.control.sendto(packet, (self.session.connection.remote_ip, self.control_port))
+
+    def _send_packet(self, pcm, rtptime, first):
+        header = AudioPacketHeader.encode(0x80, 0xE0 if first else 0x60, self._seq,
+                                          rtptime & 0xFFFFFFFF, self.ssrc)
+        # El nonce que usará este encrypt va al final del paquete (8 bytes), como en pyatv.
+        nonce = self.cipher.out_nonce
+        payload = self.cipher.encrypt(pcm, aad=header[4:12])
+        self.data.sendto(header + payload + nonce[-8:])
+        self._seq = (self._seq + 1) % 2**16
+
+    def stop(self):
+        if self._task:
+            self._task.cancel()
+        if self.device:
+            self.device.close()
+        for transport in (self.data, self.control):
+            if transport:
+                transport.close()
+
+
 class MirrorSession:
     """Sesión de duplicado de pantalla hacia un receptor AirPlay 2."""
 
-    def __init__(self, address, credentials, name="AireCast MVP", port=7000):
+    def __init__(self, address, credentials, name="AireCast MVP", port=7000, audio=True):
         self.address = address
+        self.want_audio = audio
+        self.audio = None
         self.port = port
         self.credentials = parse_credentials(credentials)
         self.name = name
@@ -146,6 +323,16 @@ class MirrorSession:
         _LOGGER.debug("SETUP de vídeo: %s", resp)
         data_port = resp["streams"][0]["dataPort"]
 
+        # 2b. SETUP de flujo de audio (Stream 96). Si la TV lo rechaza, seguimos solo con vídeo.
+        if self.want_audio:
+            audio = AudioStream(self)
+            try:
+                await audio.setup()
+                self.audio = audio
+            except Exception as exc:
+                _LOGGER.warning("La TV no aceptó el flujo de audio: %s", exc)
+                audio.stop()
+
         # 3. Orden de RECORD requerida por Roku OS / AirPlay 2
         try:
             await self.rtsp.exchange("RECORD", body={"streams": [{"type": MIRROR_STREAM_TYPE}]}, allow_error=True)
@@ -159,6 +346,13 @@ class MirrorSession:
         self.cipher = Chacha20Cipher8byteNonce(out_key, in_key)
         _, self.writer = await asyncio.open_connection(self.connection.remote_ip, data_port)
         self._keepalive = asyncio.ensure_future(self._feedback_loop())
+        if self.audio:
+            try:
+                self.audio.start()
+            except Exception as exc:
+                _LOGGER.warning("No se pudo capturar el audio del sistema: %s", exc)
+                self.audio.stop()
+                self.audio = None
         return data_port
 
     async def _setup(self, body):
@@ -189,8 +383,12 @@ class MirrorSession:
     async def stop(self):
         if self._keepalive:
             self._keepalive.cancel()
+        if self.audio:
+            self.audio.stop()
         try:
             if self.rtsp:
+                if self.audio:
+                    await self.rtsp.exchange("TEARDOWN", body={"streams": [{"type": AUDIO_STREAM_TYPE}]}, allow_error=True)
                 await self.rtsp.exchange("TEARDOWN", body={"streams": [{"type": MIRROR_STREAM_TYPE}]}, allow_error=True)
                 await self.rtsp.exchange("TEARDOWN", allow_error=True)
         except Exception as exc:
