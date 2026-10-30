@@ -133,6 +133,18 @@ class AesCtrFrameCipher:
         return bytes(out)
 
 
+class _LoggedTimingServer(TimingServer):
+    """TimingServer de pyatv que deja en el log las consultas NTP que hace la TV."""
+
+    requests = 0
+
+    def datagram_received(self, data, addr):
+        self.requests += 1
+        if self.requests <= 3 or self.requests % 50 == 0:
+            _LOGGER.debug("NTP: consulta %d de %s (%d bytes)", self.requests, addr, len(data))
+        super().datagram_received(data, addr)
+
+
 class _PlainEventChannel(asyncio.Protocol):
     """Canal de eventos sin cifrar (receptores legacy): responde 200 OK a cada petición RTSP."""
 
@@ -386,7 +398,8 @@ class MirrorSession:
         self.rtsp = RtspSession(self.connection)
 
         _, self.timing = await loop.create_datagram_endpoint(
-            TimingServer, local_addr=(self.connection.local_ip, 0))
+            _LoggedTimingServer, local_addr=(self.connection.local_ip, 0))
+        _LOGGER.debug("Servidor NTP local en %s:%d", self.connection.local_ip, self.timing.port)
 
         if self.legacy:
             return await self._start_legacy(loop)
@@ -520,10 +533,19 @@ class MirrorSession:
         self._keepalive = asyncio.ensure_future(self._feedback_loop())
         return data_port
 
+    async def _send_watched(self, send):
+        """Avisa en el log si la TV tarda en responder (suele estar esperando su consulta NTP)."""
+        task = asyncio.ensure_future(send())
+        done, _ = await asyncio.wait({task}, timeout=3)
+        if not done:
+            _LOGGER.warning("La TV no responde tras 3 s; consultas NTP recibidas hasta ahora: %d",
+                            self.timing.requests if self.timing else 0)
+        return await task
+
     async def _authorized(self, send):
         """Hace la petición y, si la TV responde 401, pide el código que muestra y reintenta con Digest."""
         for attempt in range(MAX_CODE_ATTEMPTS + 1):
-            resp = await send()
+            resp = await self._send_watched(send)
             if resp.code != 401:
                 return resp
             if attempt == MAX_CODE_ATTEMPTS:
