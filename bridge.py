@@ -84,6 +84,24 @@ class Bridge:
         self.pairing = None
         self.atv = None
         self.task = None  # reproducción en curso
+        self.code_waiter = None  # código de AirPlay que la interfaz debe pedir al usuario
+
+    async def ask_code(self, retry):
+        """Pide a la interfaz el código que muestra la TV (Apple TV en modo "código en pantalla")."""
+        self.code_waiter = self.loop.create_future()
+        emit({"event": "code-required", "retry": retry})
+        try:
+            return await asyncio.wait_for(self.code_waiter, timeout=120)
+        except asyncio.TimeoutError:
+            raise RuntimeError("No se escribió el código de la TV a tiempo") from None
+        finally:
+            self.code_waiter = None
+
+    async def mirror_code(self, msg):
+        if not self.code_waiter or self.code_waiter.done():
+            raise RuntimeError("La TV no está esperando ningún código")
+        self.code_waiter.set_result(str(msg["code"]).strip())
+        return {"sent": True}
 
     async def find(self, device_id):
         conf = self.configs.get(device_id)
@@ -134,8 +152,6 @@ class Bridge:
                 raise RuntimeError("PIN incorrecto")
             creds = load_creds()
             creds[msg["device"]] = self.pairing.service.credentials
-            # Los Apple TV antiguos pueden pedir el mismo PIN como contraseña Digest al duplicar.
-            creds.setdefault("_pins", {})[msg["device"]] = str(msg["pin"])
             save_creds(creds)
             return {"paired": True}
         finally:
@@ -189,12 +205,11 @@ class Bridge:
         """Duplica la pantalla (AirPlay 2 + HomeKit, como PigeonCast). Ver mirror.py."""
         await self.disconnect()
         conf = await self.find(msg["device"])
-        creds = load_creds()
-        cred = creds.get(msg["device"])
+        cred = load_creds().get(msg["device"])
         if not cred:
             raise RuntimeError("Empareja primero la TV (hace falta el PIN)")
         session = MirrorSession(str(conf.address), cred, port=conf.get_service(Protocol.AirPlay).port,
-                                pin=creds.get("_pins", {}).get(msg["device"]))
+                                ask_code=self.ask_code)
         await session.start()
         emit({"event": "info", "message": "Audio: activo" if session.audio else
               "Audio: no disponible, solo vídeo (detalles en airplay-debug.log)"})
@@ -210,6 +225,8 @@ class Bridge:
         return {"playing": True}
 
     async def stop(self, _msg):
+        if self.code_waiter and not self.code_waiter.done():
+            self.code_waiter.set_exception(RuntimeError("Cancelado"))
         await self.disconnect()
         return {"stopped": True}
 

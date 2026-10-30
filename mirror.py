@@ -20,7 +20,8 @@ Apple TV antiguos con emparejamiento legacy (AppleTV3,2), siguiendo el flujo de 
   2. SETUP "media-first": sesión + flujo de audio (sin paquetes) + clave AES envuelta (ekey/eiv).
   3. SETUP de vídeo con la clave en shk/shiv -> dataPort; RECORD.
   4. Vídeo cifrado con AES-128-CTR (clave e IV derivados con SHA-512 de shk + streamConnectionID).
-Si la TV responde 401, se reintenta con Digest (usuario "AirPlay", contraseña = PIN guardado).
+Si la TV responde 401 (modo "código en pantalla"), muestra un código nuevo en cada conexión: se le
+pide al usuario y se reintenta con Digest (usuario "AirPlay", contraseña = ese código).
 """
 
 import array
@@ -87,6 +88,7 @@ LEGACY_SENDER_INFO = {
 }
 LEGACY_VIDEO_LATENCY_MS = 75
 FRAME_IDR = 0x10
+MAX_CODE_ATTEMPTS = 3
 
 
 def _header(size, ptype, option, ntp, flags=0):
@@ -350,13 +352,13 @@ class AudioStream:
 class MirrorSession:
     """Sesión de duplicado de pantalla hacia un receptor AirPlay 2."""
 
-    def __init__(self, address, credentials, name="AireCast MVP", port=7000, audio=True, pin=None):
+    def __init__(self, address, credentials, name="AireCast MVP", port=7000, audio=True, ask_code=None):
         self.address = address
         self.want_audio = audio
         self.audio = None
         self.port = port
         self.credentials = parse_credentials(credentials)
-        self.pin = pin
+        self.ask_code = ask_code  # async (retry: bool) -> código que muestra la TV
         self.name = name
         self.connection = None
         self.rtsp = None
@@ -510,42 +512,44 @@ class MirrorSession:
 
         # 4. Socket de datos, RECORD y cifrado AES-CTR
         _, self.writer = await asyncio.open_connection(self.connection.remote_ip, data_port)
-        await self.rtsp.exchange("RECORD", headers={
-            "Session": self.session_uuid, "Range": "npt=0-", "RTP-Info": "seq=0;rtptime=0"})
+        resp = await self._authorized(lambda: self.rtsp.exchange("RECORD", headers={
+            "Session": self.session_uuid, "Range": "npt=0-", "RTP-Info": "seq=0;rtptime=0"}, allow_error=True))
+        if resp.code >= 400:
+            raise RuntimeError(f"La TV rechazó el RECORD: {resp.code} {resp.message}")
         self.frame_cipher = AesCtrFrameCipher(*derive_video_keys(key, self.stream_id))
         self._keepalive = asyncio.ensure_future(self._feedback_loop())
         return data_port
 
-    def _use_digest(self, resp):
-        """Responde a un 401 con Digest: usuario "AirPlay" y el PIN del emparejamiento."""
-        if not self.pin:
-            raise RuntimeError("La TV pide su código de AirPlay: vuelve a emparejarla para que AireCast lo guarde")
-        challenge = dict(re.findall(r'(\w+)="([^"]*)"', resp.headers.get("WWW-Authenticate", "")))
-        _LOGGER.debug("La TV pide Digest (realm=%s), reintentando con el PIN", challenge.get("realm"))
-        self.rtsp.digest_info = DigestInfo(
-            "AirPlay", challenge.get("realm", "airplay"), str(self.pin), challenge.get("nonce", ""))
+    async def _authorized(self, send):
+        """Hace la petición y, si la TV responde 401, pide el código que muestra y reintenta con Digest."""
+        for attempt in range(MAX_CODE_ATTEMPTS + 1):
+            resp = await send()
+            if resp.code != 401:
+                return resp
+            if attempt == MAX_CODE_ATTEMPTS:
+                raise RuntimeError("Código de AirPlay incorrecto")
+            if not self.ask_code:
+                raise RuntimeError("La TV pide el código de AirPlay que muestra en pantalla")
+            challenge = dict(re.findall(r'(\w+)="([^"]*)"', resp.headers.get("WWW-Authenticate", "")))
+            _LOGGER.debug("La TV pide Digest (realm=%s), pidiendo el código al usuario", challenge.get("realm"))
+            code = await self.ask_code(attempt > 0)
+            self.rtsp.digest_info = DigestInfo(
+                "AirPlay", challenge.get("realm", "airplay"), code, challenge.get("nonce", ""))
 
     async def _fp_setup(self, message):
-        headers = {"Content-Type": "application/octet-stream", "X-Apple-ET": "32"}
-        for attempt in range(2):
+        def send():
+            headers = {"Content-Type": "application/octet-stream", "X-Apple-ET": "32"}
             if self.rtsp.digest_info:
                 headers["Authorization"] = get_digest_payload("POST", "/fp-setup", *self.rtsp.digest_info)
-            resp = await self.connection.post("/fp-setup", headers=headers, body=message, allow_error=True)
-            if resp.code != 401 or attempt:
-                break
-            self._use_digest(resp)
+            return self.connection.post("/fp-setup", headers=headers, body=message, allow_error=True)
+
+        resp = await self._authorized(send)
         if resp.code != 200:
             raise RuntimeError(f"La TV rechazó FairPlay (/fp-setup): {resp.code} {resp.message}")
         return bytes(resp.body)
 
     async def _setup(self, body):
-        for attempt in range(2):
-            resp = await self.rtsp.exchange("SETUP", body=body, allow_error=True)
-            if resp.code != 401 or attempt:
-                break
-            self._use_digest(resp)
-        if resp.code == 401:
-            raise RuntimeError("La TV rechazó el código de AirPlay guardado: vuelve a emparejarla")
+        resp = await self._authorized(lambda: self.rtsp.exchange("SETUP", body=body, allow_error=True))
         if resp.code >= 400:
             raise RuntimeError(f"La TV rechazó el SETUP: {resp.code} {resp.message}")
         return decode_bplist_from_body(resp) if resp.body else {}
