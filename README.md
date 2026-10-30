@@ -54,7 +54,7 @@ Este comando:
 ## Compatibilidad del duplicado de pantalla
 
 - **TVs con AirPlay 2 de terceros** (Roku, Samsung, LG…): emparejamiento HomeKit, vídeo cifrado con ChaCha20 y audio.
-- **Apple TV antiguos** (probado el flujo con un AppleTV3,2 simulado): emparejamiento legacy + FairPlay SAP, vídeo cifrado con AES-CTR, de momento sin audio. Si la TV pide su código de AirPlay al duplicar, AireCast usa el PIN del emparejamiento; si lo emparejaste antes de esta versión, vuelve a emparejarlo para que se guarde.
+- **Apple TV antiguos** (probado el flujo con un AppleTV3,2 simulado): emparejamiento legacy + FairPlay SAP, vídeo cifrado con AES-CTR, de momento sin audio. Si en el Apple TV la seguridad de AirPlay es "Código en pantalla", la TV muestra un código nuevo en cada conexión y AireCast te pide que lo escribas.
 
 ## Licencias de terceros
 

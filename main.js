@@ -98,6 +98,7 @@ function findFfmpeg() {
 ipcMain.handle("scan", () => call("scan", { timeout: 5 }));
 ipcMain.handle("pair-begin", (_e, device) => call("pair_begin", { device }));
 ipcMain.handle("pair-pin", (_e, device, pin) => call("pair_pin", { device, pin }));
+ipcMain.handle("mirror-code", (_e, code) => call("mirror_code", { code }));
 ipcMain.handle("stop", () => call("stop"));
 
 ipcMain.handle("send-video", async (_e, device) => {
