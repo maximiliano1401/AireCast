@@ -87,6 +87,9 @@ LEGACY_SENDER_INFO = {
     "sourceVersion": "280.33",
 }
 LEGACY_VIDEO_LATENCY_MS = 75
+# Los receptores legacy restan la época NTP (1900) de nuestras respuestas de hora y comparan con
+# la marca de cada fotograma sin ella: si la llevara, los fotogramas quedarían ~70 años "en el futuro".
+NTP_EPOCH = 0x83AA7E80 << 32
 FRAME_IDR = 0x10
 MAX_CODE_ATTEMPTS = 3
 
@@ -168,11 +171,11 @@ class _PlainEventChannel(asyncio.Protocol):
             self.transport.write(protocol + b" 200 OK\r\n" + cseq + b"Content-Length: 0\r\nAudio-Latency: 0\r\n\r\n")
 
 
-def codec_packet(avcc, width, height):
+def codec_packet(avcc, width, height, ntp):
     """Paquete de configuración del códec (avcC en claro)."""
     w, h = float(width), float(height)
     dims = struct.pack("<12f", w, h, 0.0, 0.0, 0.0, 0.0, w, h, 0.0, 0.0, w, h)
-    header = _header(len(avcc), PACKET_CODEC, 0x16, timing.ntp_now()) + dims
+    header = _header(len(avcc), PACKET_CODEC, 0x16, ntp) + dims
     return header.ljust(128, b"\0") + avcc
 
 
@@ -584,8 +587,12 @@ class MirrorSession:
             except Exception as exc:
                 _LOGGER.debug("feedback falló: %s", exc)
 
+    def _frame_time(self):
+        """Marca de tiempo de un fotograma en el mismo reloj que nuestras respuestas NTP."""
+        return timing.ntp_now() - NTP_EPOCH if self.legacy else timing.ntp_now()
+
     async def send_codec(self, sps, pps, width, height):
-        self.writer.write(codec_packet(build_avcc(sps, pps), width, height))
+        self.writer.write(codec_packet(build_avcc(sps, pps), width, height, self._frame_time()))
         await self.writer.drain()
 
     async def send_frame(self, nals):
@@ -593,7 +600,7 @@ class MirrorSession:
         payload = b"".join(struct.pack(">I", len(n)) + n for n in nals)
         if self.frame_cipher:  # legacy: AES-CTR, sin etiqueta de autenticación
             flags = FRAME_IDR if any(n[0] & 0x1F == 5 for n in nals) else 0
-            header = _header(len(payload), PACKET_VIDEO, 0, timing.ntp_now(), flags).ljust(128, b"\0")
+            header = _header(len(payload), PACKET_VIDEO, 0, self._frame_time(), flags).ljust(128, b"\0")
             self.writer.write(header + self.frame_cipher.encrypt(payload))
             await self.writer.drain()
             return
