@@ -91,7 +91,7 @@
     $("codeInput").value = "";
   };
   $("codeBtn").onclick = sendCode;
-  $("codeInput").onkeydown = (e) => e.key === "Enter" && sendCode();
+  $("codeInput").addEventListener("keydown", (e) => { if (e.key === "Enter") sendCode(); });
   $("screenBtn").onclick = () => run("Compartiendo pantalla", pc.shareScreen);
   $("videoBtn").onclick = () => run("Reproduciendo vídeo", pc.sendVideo);
   $("audioBtn").onclick = () => run("Reproduciendo audio", pc.sendAudio);
