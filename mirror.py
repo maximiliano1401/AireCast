@@ -17,9 +17,10 @@ nosotros mismos enviamos en el SETUP. Paquetes de sync por el controlPort ligan 
 Apple TV antiguos con emparejamiento legacy (AppleTV3,2), siguiendo el flujo de doubletake:
 
   1. pair-verify legacy (sin cifrado del canal RTSP) + FairPlay SAP en POST /fp-setup.
-  2. SETUP "media-first": sesión + flujo de audio (sin paquetes) + clave AES envuelta (ekey/eiv).
+  2. SETUP "media-first": sesión + flujo de audio + clave AES envuelta (ekey/eiv).
   3. SETUP de vídeo con la clave en shk/shiv -> dataPort; RECORD.
   4. Vídeo cifrado con AES-128-CTR (clave e IV derivados con SHA-512 de shk + streamConnectionID).
+  5. Audio: tramas ALAC sin comprimir cifradas con AES-128-CBC (la clave FairPlay y eiv).
 Si la TV responde 401 (modo "código en pantalla"), muestra un código nuevo en cada conexión: se le
 pide al usuario y se reintenta con Digest (usuario "AirPlay", contraseña = ese código).
 """
@@ -248,6 +249,8 @@ class _ControlProtocol(asyncio.DatagramProtocol):
 class AudioStream:
     """Flujo de audio en tiempo real (type 96) dentro de una sesión de duplicado."""
 
+    latency = AUDIO_LATENCY
+
     def __init__(self, session):
         self.session = session
         self.key = os.urandom(32)
@@ -285,10 +288,14 @@ class AudioStream:
         }]})
         _LOGGER.debug("SETUP de audio: %s", resp)
         stream = resp["streams"][0]
-        self.data_port = stream["dataPort"]
-        self.control_port = stream.get("controlPort")
-        self.data, _ = await loop.create_datagram_endpoint(
-            asyncio.DatagramProtocol, remote_addr=(self.session.connection.remote_ip, self.data_port))
+        await self.connect(stream["dataPort"], stream.get("controlPort"))
+
+    async def connect(self, data_port, control_port):
+        """Abre el socket de datos hacia los puertos que la TV respondió en el SETUP."""
+        self.data_port = data_port
+        self.control_port = control_port
+        self.data, _ = await asyncio.get_running_loop().create_datagram_endpoint(
+            asyncio.DatagramProtocol, remote_addr=(self.session.connection.remote_ip, data_port))
 
     def start(self):
         loop = asyncio.get_running_loop()
@@ -325,7 +332,7 @@ class AudioStream:
             while True:
                 due = int((loop.time() - started) * AUDIO_RATE)
                 while sent + AUDIO_SPF <= due:
-                    rtptime = sent + AUDIO_LATENCY
+                    rtptime = sent + self.latency
                     if sent >= next_sync:
                         self._send_sync(start_ts + sent, rtptime, first=sent == 0)
                         next_sync += AUDIO_RATE
@@ -342,7 +349,7 @@ class AudioStream:
             return
         sec, frac = timing.ntp2parts(timing.ts2ntp(head_ts, AUDIO_RATE))
         packet = SyncPacket.encode(0x90 if first else 0x80, 0xD4, 0x0007,
-                                   rtptime - AUDIO_LATENCY, sec, frac, rtptime)
+                                   rtptime - self.latency, sec, frac, rtptime)
         self.control.sendto(packet, (self.session.connection.remote_ip, self.control_port))
 
     def _send_packet(self, pcm, rtptime, first):
@@ -362,6 +369,56 @@ class AudioStream:
         for transport in (self.data, self.control):
             if transport:
                 transport.close()
+
+
+def alac_verbatim(pcm_be, samples=AUDIO_SPF):
+    """Trama ALAC "verbatim" (sin comprimir), estéreo 16 bits, a partir de PCM big-endian.
+
+    Bits: tag CPE(3)=1, instancia(4), sin uso(12), hasSize(1)=1, extraBytes(2)=0, verbatim(1)=1,
+    nº de muestras(32), las muestras tal cual y el tag END(3)=7; se rellena hasta el byte.
+    """
+    bits = 0
+    for value, width in ((1, 3), (0, 4), (0, 12), (1, 1), (0, 2), (1, 1), (samples, 32)):
+        bits = bits << width | value
+    nbits = 55 + 8 * len(pcm_be) + 3
+    bits = (bits << (8 * len(pcm_be)) | int.from_bytes(pcm_be, "big")) << 3 | 7
+    pad = -nbits % 8
+    return (bits << pad).to_bytes((nbits + pad) // 8, "big")
+
+
+class LegacyAudioStream(AudioStream):
+    """Audio para Apple TV legacy: ALAC sin comprimir cifrado con AES-128-CBC (clave FairPlay).
+
+    El flujo se declara en el SETUP de sesión (media-first), así que aquí no hay SETUP propio:
+    la sesión crea el socket de control y luego llama a connect() con los puertos de la TV.
+    """
+
+    latency = AUDIO_RATE * 85 // 1000  # 85 ms, 10 ms por delante del vídeo (como doubletake)
+
+    def __init__(self, session, key, iv):
+        super().__init__(session)
+        self.aes_key = key
+        self.aes_iv = iv
+        self.ssrc = 0  # el audio de duplicado usa SSRC 0
+        self.control = session.control
+
+    def _send_sync(self, head_ts, rtptime, first):
+        """Sync NTP legacy: la misma posición RTP (ya descontada la latencia) en ambos campos."""
+        if not self.control_port:
+            return
+        playhead = (rtptime - self.latency) & 0xFFFFFFFF
+        packet = struct.pack(">BBHIQI", 0x90 if first else 0x80, 0xD4, 4,
+                             playhead, timing.ts2ntp(head_ts, AUDIO_RATE), playhead)
+        self.control.sendto(packet, (self.session.connection.remote_ip, self.control_port))
+
+    def _send_packet(self, pcm, rtptime, first):
+        header = struct.pack(">BBHII", 0x80, 0x60, self._seq, rtptime & 0xFFFFFFFF, self.ssrc)
+        frame = alac_verbatim(pcm)
+        # Solo se cifran los bloques completos de 16 bytes; el resto viaja en claro.
+        full = len(frame) // 16 * 16
+        aes = Cipher(algorithms.AES(self.aes_key), modes.CBC(self.aes_iv)).encryptor()
+        self.data.sendto(header + aes.update(frame[:full]) + aes.finalize() + frame[full:])
+        self._seq = (self._seq + 1) % 2**16
 
 
 class MirrorSession:
@@ -459,12 +516,7 @@ class MirrorSession:
         _, self.writer = await asyncio.open_connection(self.connection.remote_ip, data_port)
         self._keepalive = asyncio.ensure_future(self._feedback_loop())
         if self.audio:
-            try:
-                self.audio.start()
-            except Exception as exc:
-                _LOGGER.warning("No se pudo capturar el audio del sistema: %s", exc)
-                self.audio.stop()
-                self.audio = None
+            self._start_audio()
         return data_port
 
     async def _start_legacy(self, loop):
@@ -475,8 +527,8 @@ class MirrorSession:
         fairplay.confirm(await self._fp_setup(fairplay.message3(m2)))
         key, iv = os.urandom(16), os.urandom(16)
 
-        # 2. SETUP media-first: crea la sesión con un flujo de audio que el receptor exige,
-        #    aunque no le mandemos paquetes (solo vídeo por ahora).
+        # 2. SETUP media-first: crea la sesión junto con el flujo de audio (ALAC, AES-CBC con la
+        #    misma clave FairPlay). El receptor lo exige aunque se desactive el audio.
         self.control, _ = await loop.create_datagram_endpoint(
             _ControlProtocol, local_addr=(self.connection.local_ip, 0))
         resp = await self._setup({
@@ -494,18 +546,25 @@ class MirrorSession:
             "streams": [{
                 "type": AUDIO_STREAM_TYPE,
                 "streamConnectionID": random.randint(1, 2**63 - 1),
-                "ct": 2,  # ALAC (descriptor de relleno: no se envía audio)
+                "ct": 2,  # ALAC
                 "spf": AUDIO_SPF,
                 "sr": AUDIO_RATE,
                 "audioFormat": 0x40000,
                 "audioMode": "default",
                 "usingScreen": True,
                 "latencyMin": 0,
-                "latencyMax": AUDIO_LATENCY,
+                "latencyMax": LegacyAudioStream.latency,
                 "controlPort": self.control.get_extra_info("sockname")[1],
             }],
         })
         _LOGGER.debug("SETUP de sesión (legacy): %s", resp)
+        audio_ports = next((s for s in resp.get("streams", []) if s.get("type") == AUDIO_STREAM_TYPE), None)
+        if self.want_audio and audio_ports and audio_ports.get("dataPort"):
+            audio = LegacyAudioStream(self, key, iv)
+            await audio.connect(audio_ports["dataPort"], audio_ports.get("controlPort"))
+            self.audio = audio
+        elif self.want_audio:
+            _LOGGER.warning("La TV no devolvió puertos de audio: %s", resp)
         if resp.get("eventPort"):
             try:
                 transport, _ = await loop.create_connection(
@@ -534,7 +593,22 @@ class MirrorSession:
             raise RuntimeError(f"La TV rechazó el RECORD: {resp.code} {resp.message}")
         self.frame_cipher = AesCtrFrameCipher(*derive_video_keys(key, self.stream_id))
         self._keepalive = asyncio.ensure_future(self._feedback_loop())
+        if self.audio:
+            # Volumen 0 dB (máximo de AirPlay): el control queda en el mando de la TV.
+            resp = await self._authorized(lambda: self.rtsp.exchange(
+                "SET_PARAMETER", content_type="text/parameters", body="volume: 0.000000\r\n", allow_error=True))
+            _LOGGER.debug("SET_PARAMETER volume: %s", resp.code)
+            self._start_audio()
         return data_port
+
+    def _start_audio(self):
+        """Empieza a capturar y enviar el audio; si falla la captura, sigue solo con vídeo."""
+        try:
+            self.audio.start()
+        except Exception as exc:
+            _LOGGER.warning("No se pudo capturar el audio del sistema: %s", exc)
+            self.audio.stop()
+            self.audio = None
 
     async def _send_watched(self, send):
         """Avisa en el log si la TV tarda en responder (suele estar esperando su consulta NTP)."""
