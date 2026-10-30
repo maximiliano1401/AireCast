@@ -13,19 +13,30 @@ Audio (experimental): SETUP de stream type 96 (audio en tiempo real, como el RAO
 de pyatv) en la misma sesión. El audio del sistema se captura con WASAPI loopback (miniaudio)
 y se envía por UDP como RTP con PCM 16 bits, cifrado con ChaCha20 usando la clave `shk` que
 nosotros mismos enviamos en el SETUP. Paquetes de sync por el controlPort ligan RTP <-> NTP.
+
+Apple TV antiguos con emparejamiento legacy (AppleTV3,2), siguiendo el flujo de doubletake:
+
+  1. pair-verify legacy (sin cifrado del canal RTSP) + FairPlay SAP en POST /fp-setup.
+  2. SETUP "media-first": sesión + flujo de audio (sin paquetes) + clave AES envuelta (ekey/eiv).
+  3. SETUP de vídeo con la clave en shk/shiv -> dataPort; RECORD.
+  4. Vídeo cifrado con AES-128-CTR (clave e IV derivados con SHA-512 de shk + streamConnectionID).
+Si la TV responde 401, se reintenta con Digest (usuario "AirPlay", contraseña = PIN guardado).
 """
 
 import array
 import asyncio
+import hashlib
 import logging
 import os
 import random
+import re
 import struct
 import uuid
 
 import miniaudio
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from pyatv.auth.hap_channel import setup_channel
-from pyatv.auth.hap_pairing import parse_credentials
+from pyatv.auth.hap_pairing import AuthenticationType, parse_credentials
 from pyatv.protocols.airplay.ap2_session import (
     DATASTREAM_INPUT_INFO,
     DATASTREAM_OUTPUT_INFO,
@@ -41,7 +52,9 @@ from pyatv.protocols.raop.packets import AudioPacketHeader, SyncPacket
 from pyatv.protocols.raop.protocols import TimingServer
 from pyatv.support.chacha20 import Chacha20Cipher8byteNonce
 from pyatv.support.http import decode_bplist_from_body, http_connect
-from pyatv.support.rtsp import RtspSession
+from pyatv.support.rtsp import DigestInfo, RtspSession, get_digest_payload
+
+from fairplay import FairPlaySession
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -66,10 +79,79 @@ SENDER_INFO = {
     "sourceVersion": "620.8.2",
 }
 
+# Identidad que doubletake presenta a los receptores legacy (probada con AppleTV3,2).
+LEGACY_SENDER_INFO = {
+    "model": "Linux",
+    "osBuildVersion": "13F69",
+    "sourceVersion": "280.33",
+}
+LEGACY_VIDEO_LATENCY_MS = 75
+FRAME_IDR = 0x10
 
-def _header(size, ptype, option, ntp):
-    """Cabecera de 128 bytes: tamaño, tipo, opción, marca NTP y relleno."""
-    return struct.pack("<IBBBBQ", size, ptype, 0, option, 0, ntp)
+
+def _header(size, ptype, option, ntp, flags=0):
+    """Cabecera de 128 bytes: tamaño, tipo, flags (0x10 = IDR), opción, marca NTP y relleno."""
+    return struct.pack("<IBBBBQ", size, ptype, flags, option, 0, ntp)
+
+
+def derive_video_keys(shk, stream_id):
+    """Clave e IV de AES-CTR para el vídeo legacy: SHA-512("AirPlayStream{Key,IV}<id>" + shk)[:16]."""
+    key = hashlib.sha512(f"AirPlayStreamKey{stream_id}".encode() + shk).digest()[:16]
+    iv = hashlib.sha512(f"AirPlayStreamIV{stream_id}".encode() + shk).digest()[:16]
+    return key, iv
+
+
+class AesCtrFrameCipher:
+    """AES-128-CTR por fotograma, con la alineación a bloques que espera el receptor.
+
+    Cada fotograma empieza en un bloque CTR nuevo; si el anterior terminó a medio bloque, los
+    bytes de keystream sobrantes se usan primero para el inicio del siguiente fotograma.
+    """
+
+    def __init__(self, key, iv):
+        self._ctr = Cipher(algorithms.AES(key), modes.CTR(iv)).encryptor()
+        self._leftover = b""
+
+    def encrypt(self, payload):
+        out = bytearray(payload)
+        n = min(len(self._leftover), len(out))
+        for i in range(n):
+            out[i] ^= self._leftover[i]
+        self._leftover = self._leftover[n:]
+        if self._leftover:
+            return bytes(out)
+        full = (len(out) - n) // 16 * 16
+        out[n:n + full] = self._ctr.update(bytes(out[n:n + full]))
+        rest = len(out) - n - full
+        if rest:
+            keystream = self._ctr.update(bytes(16))
+            for i in range(rest):
+                out[n + full + i] ^= keystream[i]
+            self._leftover = keystream[rest:]
+        return bytes(out)
+
+
+class _PlainEventChannel(asyncio.Protocol):
+    """Canal de eventos sin cifrar (receptores legacy): responde 200 OK a cada petición RTSP."""
+
+    def connection_made(self, transport):
+        self.transport = transport
+        self.buffer = b""
+
+    def data_received(self, data):
+        self.buffer += data
+        while b"\r\n\r\n" in self.buffer:
+            head, rest = self.buffer.split(b"\r\n\r\n", 1)
+            lines = head.split(b"\r\n")
+            headers = {k.strip().lower(): v.strip() for k, _, v in (l.partition(b":") for l in lines[1:])}
+            length = int(headers.get(b"content-length", 0))
+            if len(rest) < length:
+                break
+            self.buffer = rest[length:]
+            _LOGGER.debug("Canal de eventos: %s", lines[0])
+            protocol = lines[0].rsplit(b" ", 1)[-1]
+            cseq = b"CSeq: " + headers[b"cseq"] + b"\r\n" if b"cseq" in headers else b""
+            self.transport.write(protocol + b" 200 OK\r\n" + cseq + b"Content-Length: 0\r\nAudio-Latency: 0\r\n\r\n")
 
 
 def codec_packet(avcc, width, height):
@@ -268,23 +350,32 @@ class AudioStream:
 class MirrorSession:
     """Sesión de duplicado de pantalla hacia un receptor AirPlay 2."""
 
-    def __init__(self, address, credentials, name="AireCast MVP", port=7000, audio=True):
+    def __init__(self, address, credentials, name="AireCast MVP", port=7000, audio=True, pin=None):
         self.address = address
         self.want_audio = audio
         self.audio = None
         self.port = port
         self.credentials = parse_credentials(credentials)
+        self.pin = pin
         self.name = name
         self.connection = None
         self.rtsp = None
         self.verifier = None
         self.timing = None
+        self.control = None
         self.channels = []
         self.writer = None
         self.cipher = None
+        self.frame_cipher = None
         self.stream_id = random.randint(1, 2**32 - 1)
+        self.session_uuid = str(uuid.uuid4()).upper()
         self.mac = ":".join(f"{random.randint(0, 255):02X}" for _ in range(6))
         self._keepalive = None
+
+    @property
+    def legacy(self):
+        """Emparejamiento legacy (Apple TV antiguos): sin HomeKit, requiere FairPlay."""
+        return self.credentials.type == AuthenticationType.Legacy
 
     async def start(self):
         loop = asyncio.get_running_loop()
@@ -295,11 +386,14 @@ class MirrorSession:
         _, self.timing = await loop.create_datagram_endpoint(
             TimingServer, local_addr=(self.connection.local_ip, 0))
 
+        if self.legacy:
+            return await self._start_legacy(loop)
+
         # 1. SETUP de sesión
         resp = await self._setup({
             "deviceID": self.mac,
             "macAddress": self.mac,
-            "sessionUUID": str(uuid.uuid4()).upper(),
+            "sessionUUID": self.session_uuid,
             "isScreenMirroringSession": True,
             "name": self.name,
             "statsCollectionEnabled": False,
@@ -355,8 +449,105 @@ class MirrorSession:
                 self.audio = None
         return data_port
 
+    async def _start_legacy(self, loop):
+        """Apple TV con AirPlay 1 (AppleTV3,2): FairPlay + SETUP media-first + vídeo AES-CTR."""
+        # 1. FairPlay SAP: m1 -> m2, m3 -> m4. Después la clave AES del vídeo viaja envuelta (ekey).
+        fairplay = FairPlaySession()
+        m2 = await self._fp_setup(fairplay.message1())
+        fairplay.confirm(await self._fp_setup(fairplay.message3(m2)))
+        key, iv = os.urandom(16), os.urandom(16)
+
+        # 2. SETUP media-first: crea la sesión con un flujo de audio que el receptor exige,
+        #    aunque no le mandemos paquetes (solo vídeo por ahora).
+        self.control, _ = await loop.create_datagram_endpoint(
+            _ControlProtocol, local_addr=(self.connection.local_ip, 0))
+        resp = await self._setup({
+            "deviceID": self.mac,
+            "macAddress": self.mac,
+            "sessionUUID": self.session_uuid,
+            "isScreenMirroringSession": True,
+            "name": self.name,
+            "timingPort": self.timing.port,
+            "timingProtocol": "NTP",
+            **LEGACY_SENDER_INFO,
+            "ekey": fairplay.wrap_key(key),
+            "eiv": iv,
+            "et": 32,
+            "streams": [{
+                "type": AUDIO_STREAM_TYPE,
+                "streamConnectionID": random.randint(1, 2**63 - 1),
+                "ct": 2,  # ALAC (descriptor de relleno: no se envía audio)
+                "spf": AUDIO_SPF,
+                "sr": AUDIO_RATE,
+                "audioFormat": 0x40000,
+                "audioMode": "default",
+                "usingScreen": True,
+                "latencyMin": 0,
+                "latencyMax": AUDIO_LATENCY,
+                "controlPort": self.control.get_extra_info("sockname")[1],
+            }],
+        })
+        _LOGGER.debug("SETUP de sesión (legacy): %s", resp)
+        if resp.get("eventPort"):
+            try:
+                transport, _ = await loop.create_connection(
+                    _PlainEventChannel, self.connection.remote_ip, resp["eventPort"])
+                self.channels.append(transport)
+            except OSError as exc:
+                _LOGGER.warning("No se pudo abrir el canal de eventos: %s", exc)
+
+        # 3. SETUP de vídeo con la clave en claro (shk/shiv) -> dataPort
+        resp = await self._setup({"streams": [{
+            "type": MIRROR_STREAM_TYPE,
+            "streamConnectionID": self.stream_id,
+            "latencyMs": LEGACY_VIDEO_LATENCY_MS,
+            "timestampInfo": [{"name": n} for n in TIMESTAMP_NAMES],
+            "shk": key,
+            "shiv": iv,
+        }]})
+        _LOGGER.debug("SETUP de vídeo (legacy): %s", resp)
+        data_port = resp["streams"][0]["dataPort"]
+
+        # 4. Socket de datos, RECORD y cifrado AES-CTR
+        _, self.writer = await asyncio.open_connection(self.connection.remote_ip, data_port)
+        await self.rtsp.exchange("RECORD", headers={
+            "Session": self.session_uuid, "Range": "npt=0-", "RTP-Info": "seq=0;rtptime=0"})
+        self.frame_cipher = AesCtrFrameCipher(*derive_video_keys(key, self.stream_id))
+        self._keepalive = asyncio.ensure_future(self._feedback_loop())
+        return data_port
+
+    def _use_digest(self, resp):
+        """Responde a un 401 con Digest: usuario "AirPlay" y el PIN del emparejamiento."""
+        if not self.pin:
+            raise RuntimeError("La TV pide su código de AirPlay: vuelve a emparejarla para que AireCast lo guarde")
+        challenge = dict(re.findall(r'(\w+)="([^"]*)"', resp.headers.get("WWW-Authenticate", "")))
+        _LOGGER.debug("La TV pide Digest (realm=%s), reintentando con el PIN", challenge.get("realm"))
+        self.rtsp.digest_info = DigestInfo(
+            "AirPlay", challenge.get("realm", "airplay"), str(self.pin), challenge.get("nonce", ""))
+
+    async def _fp_setup(self, message):
+        headers = {"Content-Type": "application/octet-stream", "X-Apple-ET": "32"}
+        for attempt in range(2):
+            if self.rtsp.digest_info:
+                headers["Authorization"] = get_digest_payload("POST", "/fp-setup", *self.rtsp.digest_info)
+            resp = await self.connection.post("/fp-setup", headers=headers, body=message, allow_error=True)
+            if resp.code != 401 or attempt:
+                break
+            self._use_digest(resp)
+        if resp.code != 200:
+            raise RuntimeError(f"La TV rechazó FairPlay (/fp-setup): {resp.code} {resp.message}")
+        return bytes(resp.body)
+
     async def _setup(self, body):
-        resp = await self.rtsp.setup(body=body)
+        for attempt in range(2):
+            resp = await self.rtsp.exchange("SETUP", body=body, allow_error=True)
+            if resp.code != 401 or attempt:
+                break
+            self._use_digest(resp)
+        if resp.code == 401:
+            raise RuntimeError("La TV rechazó el código de AirPlay guardado: vuelve a emparejarla")
+        if resp.code >= 400:
+            raise RuntimeError(f"La TV rechazó el SETUP: {resp.code} {resp.message}")
         return decode_bplist_from_body(resp) if resp.body else {}
 
     async def _feedback_loop(self):
@@ -374,6 +565,12 @@ class MirrorSession:
     async def send_frame(self, nals):
         """Envía un fotograma: NALs en formato AVCC, cifrados con la cabecera como AAD."""
         payload = b"".join(struct.pack(">I", len(n)) + n for n in nals)
+        if self.frame_cipher:  # legacy: AES-CTR, sin etiqueta de autenticación
+            flags = FRAME_IDR if any(n[0] & 0x1F == 5 for n in nals) else 0
+            header = _header(len(payload), PACKET_VIDEO, 0, timing.ntp_now(), flags).ljust(128, b"\0")
+            self.writer.write(header + self.frame_cipher.encrypt(payload))
+            await self.writer.drain()
+            return
         header = _header(len(payload) + 16, PACKET_VIDEO, 0, timing.ntp_now()).ljust(128, b"\0")
         encrypted_payload = self.cipher.encrypt(payload, aad=header)
         
@@ -397,6 +594,8 @@ class MirrorSession:
             self.writer.close()
         for ch in self.channels:
             ch.close()
+        if self.control:
+            self.control.close()
         if self.timing:
             self.timing.close()
         if self.connection:

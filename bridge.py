@@ -134,6 +134,8 @@ class Bridge:
                 raise RuntimeError("PIN incorrecto")
             creds = load_creds()
             creds[msg["device"]] = self.pairing.service.credentials
+            # Los Apple TV antiguos pueden pedir el mismo PIN como contraseña Digest al duplicar.
+            creds.setdefault("_pins", {})[msg["device"]] = str(msg["pin"])
             save_creds(creds)
             return {"paired": True}
         finally:
@@ -187,10 +189,12 @@ class Bridge:
         """Duplica la pantalla (AirPlay 2 + HomeKit, como PigeonCast). Ver mirror.py."""
         await self.disconnect()
         conf = await self.find(msg["device"])
-        cred = load_creds().get(msg["device"])
+        creds = load_creds()
+        cred = creds.get(msg["device"])
         if not cred:
             raise RuntimeError("Empareja primero la TV (hace falta el PIN)")
-        session = MirrorSession(str(conf.address), cred, port=conf.get_service(Protocol.AirPlay).port)
+        session = MirrorSession(str(conf.address), cred, port=conf.get_service(Protocol.AirPlay).port,
+                                pin=creds.get("_pins", {}).get(msg["device"]))
         await session.start()
         emit({"event": "info", "message": "Audio: activo" if session.audio else
               "Audio: no disponible, solo vídeo (detalles en airplay-debug.log)"})

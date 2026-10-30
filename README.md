@@ -51,6 +51,19 @@ Este comando:
    - `AireCast Setup <versión>.exe`: instalador
    - `AireCast-<versión>-portable.exe`: versión portable
 
+## Compatibilidad del duplicado de pantalla
+
+- **TVs con AirPlay 2 de terceros** (Roku, Samsung, LG…): emparejamiento HomeKit, vídeo cifrado con ChaCha20 y audio.
+- **Apple TV antiguos** (probado el flujo con un AppleTV3,2 simulado): emparejamiento legacy + FairPlay SAP, vídeo cifrado con AES-CTR, de momento sin audio. Si la TV pide su código de AirPlay al duplicar, AireCast usa el PIN del emparejamiento; si lo emparejaste antes de esta versión, vuelve a emparejarlo para que se guarde.
+
+## Licencias de terceros
+
+`fairplay.py` y `fairplay_tables.py` son una traducción a Python del FairPlay SAP de [doubletake](https://github.com/omarroth/doubletake) y se distribuyen bajo **LGPL-3.0-or-later**, como el original. Sus vectores de prueba están en `test_fairplay.py`:
+
+```powershell
+.venv\Scripts\python -m unittest test_fairplay
+```
+
 ## Archivos que no están en el repositorio
 
 Se regeneran o se crean solos, así que están en `.gitignore`:
