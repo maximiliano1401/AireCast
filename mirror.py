@@ -83,6 +83,8 @@ AUDIO_LATENCY = AUDIO_RATE // 40  # 25 ms: si va atrasado, bajar; si va adelanta
 AUDIO_MAX_BUFFER = AUDIO_RATE // 25 * AUDIO_CHANNELS * 2  # descarta audio con >40 ms de retraso
 MUTE_LOCAL = True  # silenciar el PC mientras se duplica (solo con audiocap: ver platform_win/platform_linux)
 
+VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_FPS = 1280, 720, 30
+
 SENDER_INFO = {
     "model": "iPad5,3",
     "osName": "iPhone OS",
@@ -791,18 +793,26 @@ class MirrorSession:
             self.connection.close()
 
 
-async def mirror_screen(session, ffmpeg, width=1280, height=720, fps=30, on_status=None):
-    """Captura la pantalla con FFmpeg (H.264 Annex-B) y la envía por la sesión."""
+def screen_capture(state_dir):
+    """Captura de pantalla de esta plataforma con el tamaño y los fps del duplicado (ver mirror_screen)."""
+    return plat.screen_capture(VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_FPS, state_dir)
+
+
+async def mirror_screen(session, ffmpeg, capture, on_status=None):
+    """Codifica la captura (ya abierta) con FFmpeg (H.264 Annex-B) y la envía por la sesión."""
+    width, height, fps = capture.width, capture.height, capture.fps
+    # -nostdin: que FFmpeg no lea teclas de su stdin, que es la tubería de comandos del puente
+    # (o, en Wayland, el vídeo crudo de pipe:0).
     proc = await asyncio.create_subprocess_exec(
-        ffmpeg, "-hide_banner", "-loglevel", "error",
-        *plat.screen_capture_args(fps),
+        ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin",
+        *capture.ffmpeg_input_args(),
         "-vf", f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2",
         "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
         "-profile:v", "baseline", "-level", "3.1", "-pix_fmt", "yuv420p",
         "-g", str(fps), "-keyint_min", str(fps),
         "-x264-params", "aud=1:repeat-headers=1",
         "-f", "h264", "-",
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        stdin=capture.stdin, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         **plat.SUBPROCESS_FLAGS,
     )
     sps = pps = None

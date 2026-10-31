@@ -1,4 +1,4 @@
-"""Lo específico de Linux (sesión X11) para el duplicado de pantalla (ver mirror.py y platform_win.py)."""
+"""Lo específico de Linux (X11 o Wayland) para el duplicado de pantalla (ver mirror.py y platform_win.py)."""
 
 import logging
 import os
@@ -38,17 +38,39 @@ def primary_monitor():
     return tuple(int(v) for v in primary[1:])
 
 
-def screen_capture_args(fps):
-    """Entrada de FFmpeg para capturar el monitor principal con x11grab (todo el escritorio si falla xrandr)."""
-    display = os.environ.get("DISPLAY", ":0")
-    monitor = primary_monitor()
-    if not monitor:
-        _LOGGER.warning("No se encontró el monitor principal: se captura todo el escritorio")
-        return ["-f", "x11grab", "-framerate", str(fps), "-i", display]
-    width, height, x, y = monitor
-    _LOGGER.debug("Capturando el monitor principal: %dx%d+%d+%d en %s", width, height, x, y, display)
-    return ["-f", "x11grab", "-framerate", str(fps), "-video_size", f"{width}x{height}",
-            "-i", f"{display}+{x},{y}"]
+class X11ScreenCapture:
+    """Monitor principal con x11grab: FFmpeg lee la pantalla directamente (no hay nada que abrir)."""
+
+    stdin = None
+
+    def __init__(self, width, height, fps):
+        self.width, self.height, self.fps = width, height, fps
+
+    async def open(self):
+        pass
+
+    def ffmpeg_input_args(self):
+        """Entrada de FFmpeg para el monitor principal (todo el escritorio si falla xrandr)."""
+        display = os.environ.get("DISPLAY", ":0")
+        monitor = primary_monitor()
+        if not monitor:
+            _LOGGER.warning("No se encontró el monitor principal: se captura todo el escritorio")
+            return ["-f", "x11grab", "-framerate", str(self.fps), "-i", display]
+        width, height, x, y = monitor
+        _LOGGER.debug("Capturando el monitor principal: %dx%d+%d+%d en %s", width, height, x, y, display)
+        return ["-f", "x11grab", "-framerate", str(self.fps), "-video_size", f"{width}x{height}",
+                "-i", f"{display}+{x},{y}"]
+
+    async def close(self):
+        pass
+
+
+def screen_capture(width, height, fps, state_dir):
+    """Wayland: portal + PipeWire (screencast_linux), que pide permiso la primera vez. X11: x11grab."""
+    if os.environ.get("XDG_SESSION_TYPE") == "wayland":
+        import screencast_linux  # solo Wayland necesita jeepney
+        return screencast_linux.WaylandScreenCapture(width, height, fps, state_dir)
+    return X11ScreenCapture(width, height, fps)
 
 
 def audiocap_command(pid, mute):

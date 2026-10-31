@@ -10,9 +10,27 @@ SUBPROCESS_FLAGS = {"creationflags": 0x08000000}
 HAS_WASAPI_LOOPBACK = True
 
 
-def screen_capture_args(fps):
-    """Entrada de FFmpeg para capturar el escritorio completo con gdigrab."""
-    return ["-f", "gdigrab", "-framerate", str(fps), "-i", "desktop"]
+class GdiScreenCapture:
+    """Escritorio completo con gdigrab: FFmpeg lee la pantalla directamente (no hay nada que abrir)."""
+
+    stdin = None
+
+    def __init__(self, width, height, fps):
+        self.width, self.height, self.fps = width, height, fps
+
+    async def open(self):
+        pass
+
+    def ffmpeg_input_args(self):
+        return ["-f", "gdigrab", "-framerate", str(self.fps), "-i", "desktop"]
+
+    async def close(self):
+        pass
+
+
+def screen_capture(width, height, fps, state_dir):
+    """Captura de pantalla para mirror_screen (state_dir solo lo usa Wayland, para su token)."""
+    return GdiScreenCapture(width, height, fps)
 
 
 def audiocap_path():

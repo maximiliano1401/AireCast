@@ -2,7 +2,7 @@
 
 Emisor AirPlay de escritorio para Windows y Linux: reproduce contenido y duplica la pantalla en televisores y receptores AirPlay (Roku, Samsung, LG, Apple TV…).
 
-Es una app de Electron (`main.js`, `preload.js`, `index.html`) que se comunica con un puente en Python (`bridge.py`, basado en [pyatv](https://pyatv.dev)). FFmpeg captura y codifica la pantalla. Lo que cambia según el sistema está en `platform_win.py` y `platform_linux.py` (Python) y en `platformPaths()` (`main.js`).
+Es una app de Electron (`main.js`, `preload.js`, `index.html`) que se comunica con un puente en Python (`bridge.py`, basado en [pyatv](https://pyatv.dev)). FFmpeg captura y codifica la pantalla (en Wayland captura GStreamer, ver más abajo). Lo que cambia según el sistema está en `platform_win.py`, `platform_linux.py` y `screencast_linux.py` (Python) y en `platformPaths()` (`main.js`).
 
 ## Requisitos
 
@@ -19,7 +19,7 @@ Es una app de Electron (`main.js`, `preload.js`, `index.html`) que se comunica c
 
 ### Linux
 
-Probado en Linux Mint 21 (sesión X11, PulseAudio). Wayland todavía no es compatible.
+Probado en Linux Mint 21 (sesión X11, PulseAudio) y Fedora 44 (GNOME en Wayland, PipeWire).
 
 - Node.js 20 o superior. Si tu distribución trae uno más antiguo (Ubuntu 22.04 y Mint 21 traen Node 12), instálalo con [nvm](https://github.com/nvm-sh/nvm):
 
@@ -28,14 +28,24 @@ Probado en Linux Mint 21 (sesión X11, PulseAudio). Wayland todavía no es compa
   ```
 
 - Python 3.10 o superior, con `venv`
-- FFmpeg con `x11grab` y `libx264`
+- FFmpeg con `libx264` (y `x11grab` para X11)
 - `pactl` y `parec` (paquete `pulseaudio-utils`; con PipeWire, `pipewire-pulse`)
-- `xrandr`, para detectar el monitor principal
+- Sesión X11: `xrandr`, para detectar el monitor principal
+- Sesión Wayland: `xdg-desktop-portal` con el portal de tu escritorio (GNOME, KDE…) y GStreamer con `gst-launch-1.0`, `pipewiresrc` y los plugins base (`videoscale`, `videoconvert`, `videorate`)
 
 En Ubuntu, Mint o Debian:
 
 ```bash
 sudo apt install python3-venv ffmpeg pulseaudio-utils x11-xserver-utils
+# Wayland, además:
+sudo apt install gstreamer1.0-tools gstreamer1.0-pipewire gstreamer1.0-plugins-base
+```
+
+En Fedora, el FFmpeg oficial (`ffmpeg-free`) no trae `libx264`: usa el de [RPM Fusion](https://rpmfusion.org/Configuration).
+
+```bash
+sudo dnf swap ffmpeg-free ffmpeg --allowerasing   # con RPM Fusion (free) activado
+sudo dnf install pulseaudio-utils gstreamer1 gstreamer1-plugins-base pipewire-gstreamer
 ```
 
 ## Instalación
@@ -112,7 +122,13 @@ Los paquetes de Linux (AppImage, .deb y .rpm) están pendientes.
 - **TVs con AirPlay 2 de terceros** (Roku, Samsung, LG…): emparejamiento HomeKit, vídeo cifrado con ChaCha20 y audio.
 - **Apple TV antiguos** (probado con un AppleTV3,2 real en Windows y Linux): emparejamiento legacy + FairPlay SAP, vídeo cifrado con AES-CTR y audio ALAC cifrado con AES-CBC. Si en el Apple TV la seguridad de AirPlay es "Código en pantalla", la TV muestra un código nuevo en cada conexión y AireCast te pide que lo escribas.
 
-Captura de pantalla: en Windows, todo el escritorio (`gdigrab`); en Linux, el monitor principal (`x11grab`). La imagen se codifica con libx264 por CPU a 30 fps, así que en equipos poco potentes puede perder fotogramas.
+Captura de pantalla: en Windows, todo el escritorio (`gdigrab`); en Linux con X11, el monitor principal (`x11grab`). La imagen se codifica con libx264 por CPU a 30 fps, así que en equipos poco potentes puede perder fotogramas.
+
+**Wayland** (`XDG_SESSION_TYPE=wayland`): `x11grab` no ve las ventanas, así que la captura la hace `screencast_linux.py` con el portal del escritorio (xdg-desktop-portal, ScreenCast) y PipeWire:
+
+- La primera vez, el escritorio pregunta qué pantalla compartir. AireCast guarda el permiso (token de restauración) en `screencast-token`, junto a las credenciales, y las siguientes veces ya no pregunta. Para volver a elegir, borra ese archivo.
+- `gst-launch-1.0` lee la pantalla de PipeWire y la escala a 1280x720; FFmpeg la codifica con libx264, como en X11.
+- Mientras se duplica, el escritorio muestra su indicador de pantalla compartida. Si lo detienes desde ahí, el duplicado termina.
 
 ### Audio solo en la TV
 
@@ -150,7 +166,7 @@ Se regeneran o se crean solos, así que están en `.gitignore`:
 | `.venv/` | `python -m venv .venv` + `pip install -r requirements.txt` |
 | `build/` | `npm run build:bridge` |
 | `release/` | `npm run dist` |
-| `credentials.json`, `airplay-debug.log` | Los crea la app al ejecutarse (ver abajo) |
+| `credentials.json`, `airplay-debug.log`, `screencast-token` | Los crea la app al ejecutarse (ver abajo) |
 
 ### Credenciales de emparejamiento
 
@@ -161,6 +177,6 @@ Cuando emparejas un televisor con su PIN, la app guarda las credenciales en:
 | Windows | `%APPDATA%\AireCast\credentials.json` |
 | Linux | `~/.config/AireCast/credentials.json` |
 
-En la misma carpeta se guarda `airplay-debug.log`, el registro del protocolo para diagnosticar fallos.
+En la misma carpeta se guarda `airplay-debug.log`, el registro del protocolo para diagnosticar fallos, y en Wayland `screencast-token`, el permiso para capturar la pantalla.
 
 Esta carpeta pertenece a cada equipo, no al proyecto. En un equipo nuevo, el archivo no existe al principio y se crea la primera vez que emparejas un televisor. Contiene claves de acceso a tus dispositivos, así que no lo subas al repositorio.

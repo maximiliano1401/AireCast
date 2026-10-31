@@ -17,7 +17,7 @@ from pyatv.exceptions import HttpError
 from pyatv.protocols.airplay.player import AirPlayPlayer
 from pyatv.support.rtsp import RtspSession
 
-from mirror import MirrorSession, mirror_screen, plat
+from mirror import MirrorSession, mirror_screen, plat, screen_capture
 
 # Tras POST /play, pyatv envía PUT /setProperty y POST /rate pensados para Apple TV.
 # Las TVs con AirPlay de terceros (Roku, Samsung, LG…) responden 501 Not Implemented
@@ -208,22 +208,27 @@ class Bridge:
         cred = load_creds().get(msg["device"])
         if not cred:
             raise RuntimeError("Empareja primero la TV (hace falta el PIN)")
+        # Primero la captura: en Wayland el escritorio puede pedir permiso, y la TV no debe esperar.
+        capture = screen_capture(CREDS_FILE.parent)
+        await capture.open()
         session = MirrorSession(str(conf.address), cred, port=conf.get_service(Protocol.AirPlay).port,
                                 ask_code=self.ask_code)
         try:
             await session.start()
         except BaseException:
             await session.stop()
+            await capture.close()
             raise
         emit({"event": "info", "message": "Audio: activo" if session.audio else
               "Audio: no disponible, solo vídeo (detalles en airplay-debug.log)"})
 
         async def run():
             try:
-                await mirror_screen(session, msg["ffmpeg"],
+                await mirror_screen(session, msg["ffmpeg"], capture,
                                     on_status=lambda t: emit({"event": "info", "message": t}))
             finally:
                 await session.stop()
+                await capture.close()
 
         self.run_playback(run(), "mirror")
         return {"playing": True}
