@@ -1,7 +1,7 @@
 {
   "name": "airecast",
   "productName": "AireCast",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "AireCast MVP: emisor AirPlay de escritorio",
   "main": "main.js",
   "private": true,
