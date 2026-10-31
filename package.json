@@ -28,6 +28,8 @@
       "main.js",
       "preload.js",
       "index.html",
+      "styles.css",
+      "renderer.js",
       "package.json"
     ],
     "extraResources": [

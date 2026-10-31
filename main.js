@@ -129,7 +129,7 @@ app.whenReady().then(() => {
   startBridge();
   media.listen(0, "0.0.0.0", () => { mediaPort = media.address().port; });
   win = new BrowserWindow({
-    width: 620, height: 680, backgroundColor: "#0f172a", autoHideMenuBar: true,
+    width: 620, height: 680, backgroundColor: "#070b14", autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false },
   });
   win.loadFile("index.html");
