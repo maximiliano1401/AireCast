@@ -35,7 +35,6 @@ import re
 import struct
 import sys
 import uuid
-from pathlib import Path
 
 import miniaudio
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -60,6 +59,11 @@ from pyatv.support.rtsp import DigestInfo, RtspSession, get_digest_payload
 
 from fairplay import FairPlaySession
 
+if sys.platform == "win32":
+    import platform_win as plat
+else:
+    import platform_linux as plat
+
 _LOGGER = logging.getLogger(__name__)
 
 MIRROR_STREAM_TYPE = 110
@@ -77,16 +81,7 @@ AUDIO_SPF = 352  # muestras por paquete
 AUDIO_PACKET_BYTES = AUDIO_SPF * AUDIO_CHANNELS * 2
 AUDIO_LATENCY = AUDIO_RATE // 40  # 25 ms: si va atrasado, bajar; si va adelantado o se corta, subir
 AUDIO_MAX_BUFFER = AUDIO_RATE // 25 * AUDIO_CHANNELS * 2  # descarta audio con >40 ms de retraso
-MUTE_LOCAL = True  # silenciar el PC mientras se duplica (solo con la captura por proceso de audiocap)
-
-
-def audiocap_path():
-    """audiocap.exe: junto al puente empaquetado (resources/audiocap) o en build/ en desarrollo."""
-    if getattr(sys, "frozen", False):
-        exe = Path(sys.executable).parent.parent / "audiocap" / "audiocap.exe"
-    else:
-        exe = Path(__file__).parent / "build" / "audiocap" / "audiocap.exe"
-    return exe if exe.exists() else None
+MUTE_LOCAL = True  # silenciar el PC mientras se duplica (solo con audiocap: ver platform_win/platform_linux)
 
 SENDER_INFO = {
     "model": "iPad5,3",
@@ -319,28 +314,31 @@ class AudioStream:
         self._capture_task = asyncio.ensure_future(self._capture())
 
     async def _capture(self):
-        """Captura por proceso con audiocap (suena en la TV y no en el PC); si no, loopback normal."""
-        exe = audiocap_path()
-        if exe:
+        """Captura con audiocap (suena en la TV y no en el PC); si no, loopback normal (solo Windows)."""
+        cmd = plat.audiocap_command(os.getpid(), MUTE_LOCAL)
+        if cmd:
             try:
-                await self._capture_audiocap(exe)
+                await self._capture_audiocap(cmd)
                 return
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                _LOGGER.warning("audiocap no disponible (%s): el audio sonará también en el PC", exc)
+                _LOGGER.warning("audiocap no disponible: %s", exc)
         else:
-            _LOGGER.warning("No se encontró audiocap.exe: el audio sonará también en el PC")
+            _LOGGER.warning("No se encontró audiocap.exe")
+        if not plat.HAS_WASAPI_LOOPBACK:
+            _LOGGER.warning("Sin captura de audio del sistema: se envía silencio")
+            return
+        _LOGGER.warning("Captura loopback normal: el audio sonará también en el PC")
         try:
             self._start_loopback()
         except Exception as exc:
             _LOGGER.warning("No se pudo capturar el audio del sistema: %s", exc)
 
-    async def _capture_audiocap(self, exe):
-        args = [str(exe), str(os.getpid())] + (["--mute"] if MUTE_LOCAL else [])
+    async def _capture_audiocap(self, cmd):
         self._proc = await asyncio.create_subprocess_exec(
-            *args, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE, creationflags=0x08000000)
+            *cmd, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE, **plat.SUBPROCESS_FLAGS)
         try:
             status = (await asyncio.wait_for(self._proc.stderr.readline(), 5)).decode(errors="replace").strip()
         except asyncio.TimeoutError:
@@ -348,7 +346,7 @@ class AudioStream:
             raise RuntimeError("no respondió al iniciar") from None
         if status != "ok":
             raise RuntimeError(status or f"terminó con código {await self._proc.wait()}")
-        _LOGGER.debug("Audio capturado por proceso con audiocap (PC silenciado: %s)", MUTE_LOCAL)
+        _LOGGER.debug("Audio capturado con audiocap (PC silenciado: %s)", MUTE_LOCAL)
         while chunk := await self._proc.stdout.read(65536):
             self._pcm.extend(chunk)
 
@@ -421,7 +419,7 @@ class AudioStream:
         if self._capture_task:
             self._capture_task.cancel()
         if self._proc and self._proc.returncode is None:
-            self._proc.stdin.close()  # audiocap quita el silencio del PC y termina solo
+            self._proc.stdin.close()  # audiocap restaura el audio del PC y termina solo
         if self.device:
             self.device.close()
 
@@ -797,7 +795,7 @@ async def mirror_screen(session, ffmpeg, width=1280, height=720, fps=30, on_stat
     """Captura la pantalla con FFmpeg (H.264 Annex-B) y la envía por la sesión."""
     proc = await asyncio.create_subprocess_exec(
         ffmpeg, "-hide_banner", "-loglevel", "error",
-        "-f", "gdigrab", "-framerate", str(fps), "-i", "desktop",
+        *plat.screen_capture_args(fps),
         "-vf", f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2",
         "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
         "-profile:v", "baseline", "-level", "3.1", "-pix_fmt", "yuv420p",
@@ -805,7 +803,7 @@ async def mirror_screen(session, ffmpeg, width=1280, height=720, fps=30, on_stat
         "-x264-params", "aud=1:repeat-headers=1",
         "-f", "h264", "-",
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        creationflags=0x08000000,
+        **plat.SUBPROCESS_FLAGS,
     )
     sps = pps = None
     sent_codec = None

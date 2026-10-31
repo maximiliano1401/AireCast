@@ -17,7 +17,7 @@ from pyatv.exceptions import HttpError
 from pyatv.protocols.airplay.player import AirPlayPlayer
 from pyatv.support.rtsp import RtspSession
 
-from mirror import MirrorSession, mirror_screen
+from mirror import MirrorSession, mirror_screen, plat
 
 # Tras POST /play, pyatv envía PUT /setProperty y POST /rate pensados para Apple TV.
 # Las TVs con AirPlay de terceros (Roku, Samsung, LG…) responden 501 Not Implemented
@@ -239,6 +239,8 @@ async def main():
     loop = asyncio.get_running_loop()
     bridge = Bridge(loop)
     pending = set()
+    # Si la sesión anterior terminó de golpe, el audio del PC puede haber quedado redirigido.
+    await loop.run_in_executor(None, plat.restore_audio_leftovers)
     emit({"event": "ready"})
     # En Windows, leer stdin en un hilo es más fiable que connect_read_pipe.
     while line := await loop.run_in_executor(None, sys.stdin.readline):

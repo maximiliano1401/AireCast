@@ -16,10 +16,23 @@ const log = (text) => send("log", text);
 let bridge, nextId = 1;
 const waiting = new Map();
 
-// Empaquetada: bridge.exe (PyInstaller) en resources/bridge. En desarrollo: Python del .venv.
+// Rutas que cambian según el sistema: ejecutables con o sin .exe, Python del venv y WinGet.
+function platformPaths() {
+  const win = process.platform === "win32";
+  const exe = (name) => (win ? `${name}.exe` : name);
+  return {
+    bridge: path.join(process.resourcesPath, "bridge", exe("bridge")),
+    ffmpeg: path.join(process.resourcesPath, "ffmpeg", exe("ffmpeg")),
+    python: win ? path.join(__dirname, ".venv", "Scripts", "python.exe") : path.join(__dirname, ".venv", "bin", "python"),
+    winget: win && process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Microsoft", "WinGet", "Packages") : null,
+  };
+}
+
+// Empaquetada: bridge(.exe) (PyInstaller) en resources/bridge. En desarrollo: Python del .venv.
 function bridgeCommand(creds) {
-  if (app.isPackaged) return [path.join(process.resourcesPath, "bridge", "bridge.exe"), [creds]];
-  return [path.join(__dirname, ".venv", "Scripts", "python.exe"), [path.join(__dirname, "bridge.py"), creds]];
+  const paths = platformPaths();
+  if (app.isPackaged) return [paths.bridge, [creds]];
+  return [paths.python, [path.join(__dirname, "bridge.py"), creds]];
 }
 
 function startBridge() {
@@ -80,9 +93,10 @@ function localIpFor(address) {
 // --- FFmpeg: lo usa el puente para capturar y codificar la pantalla ---------------------------
 
 function findFfmpeg() {
-  if (app.isPackaged) return path.join(process.resourcesPath, "ffmpeg", "ffmpeg.exe");
-  const pkgs = path.join(process.env.LOCALAPPDATA, "Microsoft", "WinGet", "Packages");
-  if (fs.existsSync(pkgs)) {
+  const paths = platformPaths();
+  if (app.isPackaged) return paths.ffmpeg;
+  const pkgs = paths.winget;
+  if (pkgs && fs.existsSync(pkgs)) {
     for (const dir of fs.readdirSync(pkgs).filter((d) => d.startsWith("Gyan.FFmpeg"))) {
       for (const build of fs.readdirSync(path.join(pkgs, dir))) {
         const exe = path.join(pkgs, dir, build, "bin", "ffmpeg.exe");
