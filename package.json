@@ -3,13 +3,19 @@
   "productName": "AireCast",
   "version": "0.5.0",
   "description": "AireCast MVP: emisor AirPlay de escritorio",
+  "author": {
+    "name": "maximiliano1401",
+    "email": "bmdp149@hotmail.com"
+  },
+  "desktopName": "airecast.desktop",
   "main": "main.js",
   "private": true,
   "scripts": {
     "start": "node launch.js",
     "build:bridge": "powershell -NoProfile -ExecutionPolicy Bypass -File build-bridge.ps1",
     "build:audiocap": "powershell -NoProfile -ExecutionPolicy Bypass -File build-audiocap.ps1",
-    "dist": "npm run build:bridge && electron-builder --win"
+    "dist": "npm run build:bridge && electron-builder --win",
+    "dist:linux": "bash build-linux.sh && electron-builder --linux"
   },
   "devDependencies": {
     "electron": "^33.0.0",
@@ -59,6 +65,54 @@
     },
     "portable": {
       "artifactName": "AireCast-${version}-portable.exe"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm"
+      ],
+      "category": "AudioVideo",
+      "maintainer": "maximiliano1401 <bmdp149@hotmail.com>",
+      "synopsis": "Emisor AirPlay: duplica la pantalla y envía vídeo y audio a la TV",
+      "syncDesktopName": true
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0",
+        "pulseaudio-utils",
+        "x11-xserver-utils",
+        "xdg-desktop-portal",
+        "gstreamer1.0-tools",
+        "gstreamer1.0-plugins-base",
+        "gstreamer1.0-pipewire"
+      ]
+    },
+    "rpm": {
+      "depends": [
+        "gtk3",
+        "libnotify",
+        "nss",
+        "libXScrnSaver",
+        "(libXtst or libXtst6)",
+        "xdg-utils",
+        "at-spi2-core",
+        "(libuuid or libuuid1)",
+        "pulseaudio-utils",
+        "xrandr",
+        "xdg-desktop-portal",
+        "gstreamer1",
+        "gstreamer1-plugins-base",
+        "pipewire-gstreamer"
+      ]
     }
   }
 }

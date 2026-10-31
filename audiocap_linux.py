@@ -28,6 +28,25 @@ SINK = "airecast_sink"
 RATE = 44100
 CHANNELS = 2
 STATE_FILE = Path(os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()) / "airecast-audio.json"
+
+
+def use_system_libraries():
+    """Empaquetado con PyInstaller: que los programas del sistema que lanzamos usen sus bibliotecas.
+
+    El arranque de PyInstaller pone las suyas (de Debian 11) en LD_LIBRARY_PATH, y pactl, parec,
+    gst-launch-1.0 o xrandr las heredarían. A este proceso no le afecta: ya las cargó al arrancar.
+    Lo usan este script y el puente (que importa este módulo desde platform_linux).
+    """
+    if not getattr(sys, "frozen", False):
+        return
+    original = os.environ.pop("LD_LIBRARY_PATH_ORIG", None)
+    if original is None:
+        os.environ.pop("LD_LIBRARY_PATH", None)
+    else:
+        os.environ["LD_LIBRARY_PATH"] = original
+
+
+use_system_libraries()  # antes de _C_ENV, que copia el entorno
 _C_ENV = {**os.environ, "LC_ALL": "C"}
 
 

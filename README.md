@@ -4,6 +4,33 @@ Emisor AirPlay de escritorio para Windows y Linux: reproduce contenido y duplica
 
 Es una app de Electron (`main.js`, `preload.js`, `index.html`) que se comunica con un puente en Python (`bridge.py`, basado en [pyatv](https://pyatv.dev)). FFmpeg captura y codifica la pantalla (en Wayland captura GStreamer, ver más abajo). Lo que cambia según el sistema está en `platform_win.py`, `platform_linux.py` y `screencast_linux.py` (Python) y en `platformPaths()` (`main.js`).
 
+## Instalar en Linux
+
+Los paquetes de `release/` (ver «Generar el instalador») funcionan en distribuciones de 64 bits con glibc 2.31 o posterior: Debian 11+, Ubuntu 20.04+, Mint 20+, Fedora 32+. Traen el puente, la captura de audio y un FFmpeg propio; lo demás lo pone el sistema.
+
+**Fedora** (.rpm):
+
+```bash
+sudo dnf install ./airecast-<versión>.x86_64.rpm
+```
+
+**Ubuntu, Mint o Debian** (.deb):
+
+```bash
+sudo apt install ./airecast_<versión>_amd64.deb
+```
+
+`dnf` y `apt` instalan solos lo que AireCast necesita del sistema: `pactl`/`parec` (`pulseaudio-utils`), GStreamer con `pipewiresrc` y sus plugins base, `xdg-desktop-portal` y `xrandr`. AireCast aparece en el menú de aplicaciones.
+
+**AppImage** (cualquier distribución, sin instalar): necesita FUSE 2 (`fuse-libs` en Fedora, `libfuse2` en Ubuntu/Mint) y las mismas dependencias del sistema, que en este caso hay que instalar a mano (ver «Requisitos» → Linux):
+
+```bash
+chmod +x AireCast-<versión>.AppImage
+./AireCast-<versión>.AppImage
+```
+
+Después, abre los puertos del cortafuegos (ver «Cortafuegos»).
+
 ## Requisitos
 
 ### Windows
@@ -131,7 +158,7 @@ Si al abrir AireCast por primera vez Windows preguntó si permitir el acceso y r
 
 ## Generar el instalador
 
-Por ahora el instalador solo se genera para Windows:
+**Windows**:
 
 ```powershell
 npm run dist
@@ -144,7 +171,30 @@ Este comando:
    - `AireCast Setup <versión>.exe`: instalador
    - `AireCast-<versión>-portable.exe`: versión portable
 
-Los paquetes de Linux (AppImage, .deb y .rpm) están pendientes.
+**Linux**:
+
+```bash
+npm run dist:linux
+```
+
+Necesita Podman (o Docker) y `curl`. Para el .deb y el .rpm, electron-builder usa `fpm` y `rpmbuild`:
+
+```bash
+sudo dnf install rpm-build libxcrypt-compat   # Fedora
+sudo apt install rpm                          # Ubuntu, Mint o Debian
+```
+
+Este comando:
+
+1. Ejecuta `build-linux.sh`:
+   - En un contenedor `python:3.12-slim-bullseye` (glibc 2.31, para que los paquetes funcionen también en distribuciones antiguas) compila con PyInstaller `bridge.py` en `build/bridge/` y `audiocap_linux.py` en `build/audiocap/`.
+   - Descarga el FFmpeg estático de [johnvansickle.com](https://johnvansickle.com/ffmpeg/) (versión fija, comprobada con SHA-256) en `build/ffmpeg/` y verifica que tenga `libx264` y `x11grab`.
+2. Empaqueta la app con electron-builder en `release/`:
+   - `AireCast-<versión>.AppImage`
+   - `airecast_<versión>_amd64.deb`
+   - `airecast-<versión>.x86_64.rpm`
+
+Las dependencias del sistema del .deb y el .rpm están en `build.deb.depends` y `build.rpm.depends` (`package.json`), junto con las que electron-builder pone por defecto para Electron.
 
 ## Compatibilidad del duplicado de pantalla
 
@@ -179,6 +229,8 @@ Mientras se duplica la pantalla, el audio suena en la TV y el PC queda en silenc
 - Con `MUTE_LOCAL = False` captura el monitor de la salida real, sin cambiar nada.
 
 ## Licencias de terceros
+
+Los instaladores incluyen un **FFmpeg compilado con libx264**, que por eso se distribuye bajo la **GPL**: en Windows, el de [Gyan](https://www.gyan.dev/ffmpeg/builds/) (GPLv3); en Linux, el estático de [johnvansickle.com](https://johnvansickle.com/ffmpeg/) (GPLv3). FFmpeg va como programa aparte (`resources/ffmpeg/`), que AireCast ejecuta sin enlazarlo; en Linux, junto a él van su licencia (`LICENSE-FFmpeg-GPLv3.txt`) y las notas del autor (`README-FFmpeg.txt`). El código fuente de FFmpeg está en [ffmpeg.org](https://ffmpeg.org/download.html) y el de x264 en [VideoLAN](https://code.videolan.org/videolan/x264).
 
 `fairplay.py` y `fairplay_tables.py` son una traducción a Python del FairPlay SAP de [doubletake](https://github.com/omarroth/doubletake) y se distribuyen bajo **LGPL-3.0-or-later**, como el original. Sus vectores de prueba están en `test_fairplay.py`:
 
