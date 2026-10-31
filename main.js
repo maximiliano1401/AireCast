@@ -62,6 +62,8 @@ function call(cmd, args = {}) {
 
 const shared = new Map(); // token -> ruta de archivo
 const types = { ".mp4": "video/mp4", ".m4v": "video/x-m4v", ".mov": "video/quicktime" };
+// Mismo rango fijo que ports.py (TCP), para abrir solo esos puertos en el cortafuegos.
+const MEDIA_PORTS = { first: 27450, last: 27459 };
 let mediaPort;
 
 const media = http.createServer((req, res) => {
@@ -82,6 +84,23 @@ const media = http.createServer((req, res) => {
   res.writeHead(200, { ...headers, "Content-Length": size });
   req.method === "HEAD" ? res.end() : fs.createReadStream(file).pipe(res);
 });
+
+// Escucha en el primer puerto libre del rango; si están todos ocupados, en uno aleatorio.
+function listenMedia(port = MEDIA_PORTS.first) {
+  const onError = (err) => {
+    media.off("listening", onListening);
+    if (err.code !== "EADDRINUSE" && err.code !== "EACCES") throw err;
+    listenMedia(port < MEDIA_PORTS.last ? port + 1 : 0);
+  };
+  const onListening = () => {
+    media.off("error", onError);
+    mediaPort = media.address().port;
+    if (port === 0) log(`Puertos ${MEDIA_PORTS.first}-${MEDIA_PORTS.last} ocupados: los vídeos se sirven en el ${mediaPort}\n`);
+  };
+  media.once("error", onError);
+  media.once("listening", onListening);
+  media.listen(port, "0.0.0.0");
+}
 
 // IP de este PC en la misma red que el receptor.
 function localIpFor(address) {
@@ -141,7 +160,7 @@ ipcMain.handle("share-screen", async (_e, device) => {
 
 app.whenReady().then(() => {
   startBridge();
-  media.listen(0, "0.0.0.0", () => { mediaPort = media.address().port; });
+  listenMedia();
   win = new BrowserWindow({
     width: 620, height: 680, backgroundColor: "#070b14", autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false },

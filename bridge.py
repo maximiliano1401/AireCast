@@ -9,15 +9,20 @@ import asyncio
 import json
 import logging
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pyatv
 from pyatv.const import Protocol
 from pyatv.exceptions import HttpError
+from pyatv.protocols.airplay import player
 from pyatv.protocols.airplay.player import AirPlayPlayer
+from pyatv.protocols.raop.protocols import TimingServer
+from pyatv.storage.memory_storage import MemoryStorage
 from pyatv.support.rtsp import RtspSession
 
 from mirror import MirrorSession, mirror_screen, plat, screen_capture
+from ports import bind_udp, free_udp_ports
 
 # Tras POST /play, pyatv envía PUT /setProperty y POST /rate pensados para Apple TV.
 # Las TVs con AirPlay de terceros (Roku, Samsung, LG…) responden 501 Not Implemented
@@ -49,6 +54,20 @@ async def _tolerant_wait_for_end(self):
 
 
 AirPlayPlayer._wait_for_media_to_end = _tolerant_wait_for_end
+
+
+# Al enviar un vídeo, la TV consulta la hora a un servidor NTP que pyatv abre en un puerto
+# aleatorio: lo abrimos en el rango fijo de ports.py, para el cortafuegos.
+@asynccontextmanager
+async def _fixed_port_timing_server(rtsp):
+    _, server = await bind_udp(TimingServer, rtsp.connection.local_ip)
+    try:
+        yield server
+    finally:
+        server.close()
+
+
+player.timing_server = _fixed_port_timing_server
 
 CREDS_FILE = Path(sys.argv[1] if len(sys.argv) > 1 else "credentials.json")
 
@@ -164,7 +183,11 @@ class Bridge:
         cred = load_creds().get(device_id)
         if cred:
             conf.set_credentials(Protocol.AirPlay, cred)
-        self.atv = await pyatv.connect(conf, self.loop)
+        # Puertos de hora y control de RAOP (enviar audio) en el rango fijo de ports.py.
+        storage = MemoryStorage()
+        raop = (await storage.get_settings(conf)).protocols.raop
+        raop.timing_port, raop.control_port = free_udp_ports(2)
+        self.atv = await pyatv.connect(conf, self.loop, storage=storage)
         return self.atv
 
     async def disconnect(self):

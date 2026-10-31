@@ -58,6 +58,7 @@ from pyatv.support.http import decode_bplist_from_body, http_connect
 from pyatv.support.rtsp import DigestInfo, RtspSession, get_digest_payload
 
 from fairplay import FairPlaySession
+from ports import bind_udp
 
 if sys.platform == "win32":
     import platform_win as plat
@@ -280,10 +281,7 @@ class AudioStream:
         self._seq = random.randint(0, 2**16 - 1)
 
     async def setup(self):
-        loop = asyncio.get_running_loop()
-        local_ip = self.session.connection.local_ip
-        self.control, _ = await loop.create_datagram_endpoint(
-            _ControlProtocol, local_addr=(local_ip, 0))
+        self.control, _ = await bind_udp(_ControlProtocol, self.session.connection.local_ip)
         resp = await self.session._setup({"streams": [{
             "type": AUDIO_STREAM_TYPE,
             "ct": 1,  # PCM sin comprimir (16 bits big-endian)
@@ -525,8 +523,7 @@ class MirrorSession:
         self.verifier = await verify_connection(self.credentials, self.connection)
         self.rtsp = RtspSession(self.connection)
 
-        _, self.timing = await loop.create_datagram_endpoint(
-            _LoggedTimingServer, local_addr=(self.connection.local_ip, 0))
+        _, self.timing = await bind_udp(_LoggedTimingServer, self.connection.local_ip)
         _LOGGER.debug("Servidor NTP local en %s:%d", self.connection.local_ip, self.timing.port)
 
         if self.legacy:
@@ -597,8 +594,7 @@ class MirrorSession:
 
         # 2. SETUP media-first: crea la sesión junto con el flujo de audio (ALAC, AES-CBC con la
         #    misma clave FairPlay). El receptor lo exige aunque se desactive el audio.
-        self.control, _ = await loop.create_datagram_endpoint(
-            _ControlProtocol, local_addr=(self.connection.local_ip, 0))
+        self.control, _ = await bind_udp(_ControlProtocol, self.connection.local_ip)
         resp = await self._setup({
             "deviceID": self.mac,
             "macAddress": self.mac,

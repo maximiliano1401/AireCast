@@ -86,19 +86,48 @@ npm start
 
 La primera vez que te conectes a un televisor, la app te pedirá el PIN que aparece en pantalla para emparejarlo.
 
-### Cortafuegos (Linux)
+### Cortafuegos
 
-La TV abre conexiones hacia el PC: responde a la búsqueda (mDNS por unicast), consulta la hora durante el duplicado (NTP) y descarga los vídeos enviados. Si el cortafuegos bloquea lo entrante, la búsqueda no encuentra nada y el duplicado no arranca. Por ahora los puertos son aleatorios, así que hay que permitir lo que llegue desde la red local:
+La TV abre conexiones hacia el PC: responde a la búsqueda (mDNS), consulta la hora durante el duplicado y al enviar vídeo o audio (NTP), usa un canal de control del audio y descarga los vídeos enviados. Si el cortafuegos lo bloquea, la búsqueda no encuentra nada o el duplicado no arranca.
+
+AireCast usa siempre los mismos puertos (`ports.py` y `MEDIA_PORTS` en `main.js`), así que basta con abrir estos, y solo para la red local:
+
+| Puerto | Para qué |
+|---|---|
+| 5353/udp | Respuestas a la búsqueda (mDNS) |
+| 27450-27459/udp | Hora (NTP) y control del audio |
+| 27450-27459/tcp | Descarga de los vídeos enviados |
+
+Cada uso toma el primer puerto libre del rango. Si los diez estuvieran ocupados, AireCast usa uno aleatorio y lo avisa en `airplay-debug.log` (o en el registro de la app, para los vídeos); en ese caso hay que liberar alguno para que funcione con el cortafuegos activo.
+
+En los comandos, cambia `192.168.1.0/24` por la red de tu casa.
+
+**ufw** (Ubuntu, Mint):
 
 ```bash
-# ufw (Ubuntu, Mint)
-sudo ufw allow from 192.168.1.0/24 comment 'AireCast'
-
-# firewalld (Fedora)
-sudo firewall-cmd --zone=trusted --add-source=192.168.1.0/24
+sudo ufw allow from 192.168.1.0/24 to any port 5353 proto udp comment 'AireCast mDNS'
+sudo ufw allow from 192.168.1.0/24 to any port 27450:27459 proto udp comment 'AireCast'
+sudo ufw allow from 192.168.1.0/24 to any port 27450:27459 proto tcp comment 'AireCast'
 ```
 
-Cambia `192.168.1.0/24` por la red de tu casa.
+**firewalld** (Fedora). Las reglas van a la zona de tu conexión (`firewall-cmd --get-active-zones`); aquí, la zona por defecto. La zona `FedoraWorkstation` ya deja pasar los puertos 1025-65535, así que con ella solo falta el de mDNS; en zonas más cerradas (`public`, `home`…) hacen falta los tres:
+
+```bash
+sudo firewall-cmd --permanent --add-rich-rule='rule family=ipv4 source address=192.168.1.0/24 port port=5353 protocol=udp accept'
+sudo firewall-cmd --permanent --add-rich-rule='rule family=ipv4 source address=192.168.1.0/24 port port=27450-27459 protocol=udp accept'
+sudo firewall-cmd --permanent --add-rich-rule='rule family=ipv4 source address=192.168.1.0/24 port port=27450-27459 protocol=tcp accept'
+sudo firewall-cmd --reload
+```
+
+**Firewall de Windows** (PowerShell como administrador). `LocalSubnet` limita las reglas a la red local, y la red Wi-Fi debe estar marcada como privada:
+
+```powershell
+New-NetFirewallRule -DisplayName "AireCast mDNS" -Direction Inbound -Protocol UDP -LocalPort 5353 -RemoteAddress LocalSubnet -Profile Private -Action Allow
+New-NetFirewallRule -DisplayName "AireCast UDP" -Direction Inbound -Protocol UDP -LocalPort 27450-27459 -RemoteAddress LocalSubnet -Profile Private -Action Allow
+New-NetFirewallRule -DisplayName "AireCast TCP" -Direction Inbound -Protocol TCP -LocalPort 27450-27459 -RemoteAddress LocalSubnet -Profile Private -Action Allow
+```
+
+Si al abrir AireCast por primera vez Windows preguntó si permitir el acceso y respondiste que no, creó una regla que bloquea el programa (`python.exe` o `bridge.exe`) y pesa más que las de arriba: bórrala en «Firewall de Windows con seguridad avanzada» → «Reglas de entrada».
 
 ## Generar el instalador
 
