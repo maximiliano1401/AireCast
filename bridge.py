@@ -183,6 +183,10 @@ class Bridge:
         cred = load_creds().get(device_id)
         if cred:
             conf.set_credentials(Protocol.AirPlay, cred)
+        # Solo AirPlay y RAOP: de los demás (DMAP, MRP, Companion) no tenemos credenciales, y con
+        # DMAP (Apple TV 3) pyatv.connect falla ("expected string ... got 'NoneType'").
+        for service in conf.services:
+            service.enabled = service.protocol in (Protocol.AirPlay, Protocol.RAOP)
         # Puertos de hora y control de RAOP (enviar audio) en el rango fijo de ports.py.
         storage = MemoryStorage()
         raop = (await storage.get_settings(conf)).protocols.raop
