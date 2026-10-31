@@ -8,6 +8,7 @@
   "scripts": {
     "start": "node launch.js",
     "build:bridge": "powershell -NoProfile -ExecutionPolicy Bypass -File build-bridge.ps1",
+    "build:audiocap": "powershell -NoProfile -ExecutionPolicy Bypass -File build-audiocap.ps1",
     "dist": "npm run build:bridge && electron-builder --win"
   },
   "devDependencies": {
@@ -37,6 +38,10 @@
       {
         "from": "build/ffmpeg",
         "to": "ffmpeg"
+      },
+      {
+        "from": "build/audiocap",
+        "to": "audiocap"
       }
     ],
     "win": {

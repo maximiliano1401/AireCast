@@ -1,6 +1,7 @@
 # Prepara los recursos que electron-builder incluye en el .exe:
 #   build/bridge/  -> bridge.exe (puente Python compilado con PyInstaller)
 #   build/ffmpeg/  -> ffmpeg.exe
+#   build/audiocap/ -> audiocap.exe (captura de audio por proceso, ver audiocap.cs)
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
@@ -19,4 +20,6 @@ if (-not $ffmpeg) { throw "No se encontró ffmpeg.exe (instálalo con: winget in
 New-Item -ItemType Directory -Force build\ffmpeg | Out-Null
 Copy-Item $ffmpeg.FullName build\ffmpeg\ffmpeg.exe
 
-Write-Host "Recursos listos en build\bridge y build\ffmpeg"
+& (Join-Path $PSScriptRoot "build-audiocap.ps1")
+
+Write-Host "Recursos listos en build\bridge, build\ffmpeg y build\audiocap"

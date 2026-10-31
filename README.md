@@ -26,6 +26,9 @@ npm install
 # 2. Entorno virtual de Python con las dependencias del puente
 python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
+
+# 3. Ayudante de captura de audio (usa el compilador de C# que ya trae Windows)
+npm run build:audiocap
 ```
 
 > El entorno virtual debe llamarse `.venv` y estar en la raíz del proyecto: en desarrollo, la app ejecuta `.venv\Scripts\python.exe bridge.py`.
@@ -46,7 +49,7 @@ npm run dist
 
 Este comando:
 
-1. Ejecuta `npm run build:bridge` (`build-bridge.ps1`): compila `bridge.py` con PyInstaller en `build/bridge/` y copia `ffmpeg.exe` en `build/ffmpeg/`.
+1. Ejecuta `npm run build:bridge` (`build-bridge.ps1`): compila `bridge.py` con PyInstaller en `build/bridge/`, copia `ffmpeg.exe` en `build/ffmpeg/` y compila `audiocap.exe` en `build/audiocap/`.
 2. Empaqueta la app con electron-builder en `release/`:
    - `AireCast Setup <versión>.exe`: instalador
    - `AireCast-<versión>-portable.exe`: versión portable
@@ -55,6 +58,15 @@ Este comando:
 
 - **TVs con AirPlay 2 de terceros** (Roku, Samsung, LG…): emparejamiento HomeKit, vídeo cifrado con ChaCha20 y audio.
 - **Apple TV antiguos** (vídeo probado con un AppleTV3,2 real; audio, con uno simulado): emparejamiento legacy + FairPlay SAP, vídeo cifrado con AES-CTR y audio ALAC cifrado con AES-CBC. Si en el Apple TV la seguridad de AirPlay es "Código en pantalla", la TV muestra un código nuevo en cada conexión y AireCast te pide que lo escribas.
+
+### Audio solo en la TV
+
+Mientras se duplica la pantalla, el audio suena en la TV y el PC queda en silencio. Lo hace `audiocap.exe` (fuente en `audiocap.cs`):
+
+- Captura "todo el audio excepto AireCast" con la captura por proceso de Windows (Windows 10 2004 o posterior). Esa captura ocurre antes del volumen y del silencio de Windows, así que la TV recibe la señal completa sin importar el volumen del PC.
+- Silencia la salida del PC al empezar y la restaura al terminar, también si AireCast se cierra de golpe (lo detecta porque se cierra su entrada).
+- Si no está disponible (Windows más antiguo o `audiocap.exe` sin compilar), AireCast usa la captura normal y el audio suena también en el PC.
+- Para desactivar el silencio del PC: `MUTE_LOCAL = False` en `mirror.py`.
 
 ## Licencias de terceros
 

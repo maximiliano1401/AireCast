@@ -33,7 +33,9 @@ import os
 import random
 import re
 import struct
+import sys
 import uuid
+from pathlib import Path
 
 import miniaudio
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -72,6 +74,16 @@ AUDIO_SPF = 352  # muestras por paquete
 AUDIO_PACKET_BYTES = AUDIO_SPF * AUDIO_CHANNELS * 2
 AUDIO_LATENCY = AUDIO_RATE // 40  # 25 ms: si va atrasado, bajar; si va adelantado o se corta, subir
 AUDIO_MAX_BUFFER = AUDIO_RATE // 25 * AUDIO_CHANNELS * 2  # descarta audio con >40 ms de retraso
+MUTE_LOCAL = True  # silenciar el PC mientras se duplica (solo con la captura por proceso de audiocap)
+
+
+def audiocap_path():
+    """audiocap.exe: junto al puente empaquetado (resources/audiocap) o en build/ en desarrollo."""
+    if getattr(sys, "frozen", False):
+        exe = Path(sys.executable).parent.parent / "audiocap" / "audiocap.exe"
+    else:
+        exe = Path(__file__).parent / "build" / "audiocap" / "audiocap.exe"
+    return exe if exe.exists() else None
 
 SENDER_INFO = {
     "model": "iPad5,3",
@@ -261,8 +273,10 @@ class AudioStream:
         self.data_port = None
         self.control_port = None
         self.device = None
+        self._proc = None
         self._pcm = bytearray()
         self._task = None
+        self._capture_task = None
         self._seq = random.randint(0, 2**16 - 1)
 
     async def setup(self):
@@ -298,6 +312,44 @@ class AudioStream:
             asyncio.DatagramProtocol, remote_addr=(self.session.connection.remote_ip, data_port))
 
     def start(self):
+        self._task = asyncio.ensure_future(self._send_loop())
+        self._capture_task = asyncio.ensure_future(self._capture())
+
+    async def _capture(self):
+        """Captura por proceso con audiocap (suena en la TV y no en el PC); si no, loopback normal."""
+        exe = audiocap_path()
+        if exe:
+            try:
+                await self._capture_audiocap(exe)
+                return
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                _LOGGER.warning("audiocap no disponible (%s): el audio sonará también en el PC", exc)
+        else:
+            _LOGGER.warning("No se encontró audiocap.exe: el audio sonará también en el PC")
+        try:
+            self._start_loopback()
+        except Exception as exc:
+            _LOGGER.warning("No se pudo capturar el audio del sistema: %s", exc)
+
+    async def _capture_audiocap(self, exe):
+        args = [str(exe), str(os.getpid())] + (["--mute"] if MUTE_LOCAL else [])
+        self._proc = await asyncio.create_subprocess_exec(
+            *args, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE, creationflags=0x08000000)
+        try:
+            status = (await asyncio.wait_for(self._proc.stderr.readline(), 5)).decode(errors="replace").strip()
+        except asyncio.TimeoutError:
+            self._proc.kill()
+            raise RuntimeError("no respondió al iniciar") from None
+        if status != "ok":
+            raise RuntimeError(status or f"terminó con código {await self._proc.wait()}")
+        _LOGGER.debug("Audio capturado por proceso con audiocap (PC silenciado: %s)", MUTE_LOCAL)
+        while chunk := await self._proc.stdout.read(65536):
+            self._pcm.extend(chunk)
+
+    def _start_loopback(self):
         loop = asyncio.get_running_loop()
 
         def capture():
@@ -309,7 +361,6 @@ class AudioStream:
         next(gen)
         self.device = LoopbackDevice()
         self.device.start(gen)
-        self._task = asyncio.ensure_future(self._send_loop())
 
     def _take(self):
         """Saca un paquete de PCM del búfer; rellena con silencio (WASAPI no entrega nada si no suena nada)."""
@@ -364,8 +415,20 @@ class AudioStream:
     def stop(self):
         if self._task:
             self._task.cancel()
+        if self._capture_task:
+            self._capture_task.cancel()
+        if self._proc and self._proc.returncode is None:
+            self._proc.stdin.close()  # audiocap quita el silencio del PC y termina solo
         if self.device:
             self.device.close()
+
+    async def wait_closed(self):
+        """Espera a que audiocap restaure el sonido del PC y termine."""
+        if self._proc:
+            try:
+                await asyncio.wait_for(self._proc.wait(), 3)
+            except asyncio.TimeoutError:
+                self._proc.kill()
         for transport in (self.data, self.control):
             if transport:
                 transport.close()
@@ -689,6 +752,7 @@ class MirrorSession:
             self._keepalive.cancel()
         if self.audio:
             self.audio.stop()
+            await self.audio.wait_closed()
         try:
             if self.rtsp:
                 if self.audio:
