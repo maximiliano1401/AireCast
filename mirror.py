@@ -102,7 +102,11 @@ LEGACY_SENDER_INFO = {
     "osBuildVersion": "13F69",
     "sourceVersion": "280.33",
 }
-LEGACY_VIDEO_LATENCY_MS = 75
+# Búfer que pedimos al receptor legacy antes de mostrar cada fotograma (parte del retraso entre el PC
+# y la TV). Medido con el Apple TV 3: 25 ms corta el audio, 50 ms tiene pequeños fallos de audio,
+# 75 ms es estable (~115 ms de retraso total). Por encima de ~100 ms la TV no lo respeta en el vídeo
+# y el audio se desincronizaría.
+LEGACY_VIDEO_LATENCY_MS = 65
 # Los receptores legacy restan la época NTP (1900) de nuestras respuestas de hora y comparan con
 # la marca de cada fotograma sin ella: si la llevara, los fotogramas quedarían ~70 años "en el futuro".
 NTP_EPOCH = 0x83AA7E80 << 32
@@ -459,7 +463,7 @@ class LegacyAudioStream(AudioStream):
     la sesión crea el socket de control y luego llama a connect() con los puertos de la TV.
     """
 
-    latency = AUDIO_RATE * 85 // 1000  # 85 ms, 10 ms por delante del vídeo (como doubletake)
+    latency = AUDIO_RATE * (LEGACY_VIDEO_LATENCY_MS + 10) // 1000  # 10 ms por delante del vídeo (como doubletake)
 
     def __init__(self, session, key, iv):
         super().__init__(session)
