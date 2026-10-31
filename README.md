@@ -151,7 +151,9 @@ Los paquetes de Linux (AppImage, .deb y .rpm) están pendientes.
 - **TVs con AirPlay 2 de terceros** (Roku, Samsung, LG…): emparejamiento HomeKit, vídeo cifrado con ChaCha20 y audio.
 - **Apple TV antiguos** (probado con un AppleTV3,2 real en Windows y Linux): emparejamiento legacy + FairPlay SAP, vídeo cifrado con AES-CTR y audio ALAC cifrado con AES-CBC. Si en el Apple TV la seguridad de AirPlay es "Código en pantalla", la TV muestra un código nuevo en cada conexión y AireCast te pide que lo escribas.
 
-Captura de pantalla: en Windows, todo el escritorio (`gdigrab`); en Linux con X11, el monitor principal (`x11grab`). La imagen se codifica con libx264 por CPU a 30 fps, así que en equipos poco potentes puede perder fotogramas.
+Captura de pantalla: en Windows, todo el escritorio (`gdigrab`); en Linux con X11, el monitor principal (`x11grab`). La imagen se codifica con libx264 por CPU a 1280x720.
+
+Los fotogramas por segundo se eligen en la app, debajo de «Enviar contenido»: 15, 24, 30 (por defecto) o 60. La elección se recuerda y se aplica la próxima vez que compartas la pantalla. Más fps dan un movimiento más fluido, pero gastan más CPU y más red: si el equipo no da abasto (la imagen se atrasa o va a saltos), baja a 24 o 15. A 60 fps el vídeo usa el nivel H.264 3.2 en vez del 3.1.
 
 **Wayland** (`XDG_SESSION_TYPE=wayland`): `x11grab` no ve las ventanas, así que la captura la hace `screencast_linux.py` con el portal del escritorio (xdg-desktop-portal, ScreenCast) y PipeWire:
 

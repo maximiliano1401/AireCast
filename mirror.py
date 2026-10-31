@@ -84,7 +84,9 @@ AUDIO_LATENCY = AUDIO_RATE // 40  # 25 ms: si va atrasado, bajar; si va adelanta
 AUDIO_MAX_BUFFER = AUDIO_RATE // 25 * AUDIO_CHANNELS * 2  # descarta audio con >40 ms de retraso
 MUTE_LOCAL = True  # silenciar el PC mientras se duplica (solo con audiocap: ver platform_win/platform_linux)
 
-VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_FPS = 1280, 720, 30
+VIDEO_WIDTH, VIDEO_HEIGHT = 1280, 720
+VIDEO_FPS = 30  # por defecto
+VIDEO_FPS_CHOICES = (15, 24, 30, 60)  # los del selector de la interfaz (FPS_CHOICES en renderer.js)
 
 SENDER_INFO = {
     "model": "iPad5,3",
@@ -789,14 +791,19 @@ class MirrorSession:
             self.connection.close()
 
 
-def screen_capture(state_dir):
-    """Captura de pantalla de esta plataforma con el tamaño y los fps del duplicado (ver mirror_screen)."""
-    return plat.screen_capture(VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_FPS, state_dir)
+def screen_capture(state_dir, fps=VIDEO_FPS):
+    """Captura de pantalla de esta plataforma con el tamaño del duplicado y esos fps (ver mirror_screen)."""
+    if fps not in VIDEO_FPS_CHOICES:
+        raise ValueError(f"fps no admitidos: {fps} (valores posibles: {', '.join(map(str, VIDEO_FPS_CHOICES))})")
+    return plat.screen_capture(VIDEO_WIDTH, VIDEO_HEIGHT, fps, state_dir)
 
 
 async def mirror_screen(session, ffmpeg, capture, on_status=None):
     """Codifica la captura (ya abierta) con FFmpeg (H.264 Annex-B) y la envía por la sesión."""
     width, height, fps = capture.width, capture.height, capture.fps
+    # Nivel H.264: 3.1 llega justo a 1280x720 a 30 fps; a 60 fps hace falta 3.2.
+    level = "3.1" if fps <= 30 else "3.2"
+    _LOGGER.debug("Codificando %dx%d a %d fps (H.264 baseline, nivel %s)", width, height, fps, level)
     # -nostdin: que FFmpeg no lea teclas de su stdin, que es la tubería de comandos del puente
     # (o, en Wayland, el vídeo crudo de pipe:0).
     proc = await asyncio.create_subprocess_exec(
@@ -804,7 +811,7 @@ async def mirror_screen(session, ffmpeg, capture, on_status=None):
         *capture.ffmpeg_input_args(),
         "-vf", f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2",
         "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
-        "-profile:v", "baseline", "-level", "3.1", "-pix_fmt", "yuv420p",
+        "-profile:v", "baseline", "-level", level, "-pix_fmt", "yuv420p",
         "-g", str(fps), "-keyint_min", str(fps),
         "-x264-params", "aud=1:repeat-headers=1",
         "-f", "h264", "-",

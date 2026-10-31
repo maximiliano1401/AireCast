@@ -21,7 +21,7 @@ from pyatv.protocols.raop.protocols import TimingServer
 from pyatv.storage.memory_storage import MemoryStorage
 from pyatv.support.rtsp import RtspSession
 
-from mirror import MirrorSession, mirror_screen, plat, screen_capture
+from mirror import VIDEO_FPS, MirrorSession, mirror_screen, plat, screen_capture
 from ports import bind_udp, free_udp_ports
 
 # Tras POST /play, pyatv envía PUT /setProperty y POST /rate pensados para Apple TV.
@@ -236,7 +236,7 @@ class Bridge:
         if not cred:
             raise RuntimeError("Empareja primero la TV (hace falta el PIN)")
         # Primero la captura: en Wayland el escritorio puede pedir permiso, y la TV no debe esperar.
-        capture = screen_capture(CREDS_FILE.parent)
+        capture = screen_capture(CREDS_FILE.parent, int(msg.get("fps") or VIDEO_FPS))
         await capture.open()
         session = MirrorSession(str(conf.address), cred, port=conf.get_service(Protocol.AirPlay).port,
                                 ask_code=self.ask_code)

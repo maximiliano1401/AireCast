@@ -32,6 +32,12 @@ const statusbar = $("statusbar");
 const statusText = $("statusText");
 const logBody = $("log");
 const logCount = $("logCount");
+const fpsInputs = document.querySelectorAll('#fpsPicker input[name="fps"]');
+
+// Mismos valores que VIDEO_FPS_CHOICES en mirror.py. La elección se recuerda en este equipo.
+const FPS_CHOICES = [15, 24, 30, 60];
+const FPS_DEFAULT = 30;
+const FPS_KEY = "airecast.fps";
 
 const ICON = {
   tv: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="13" rx="2"></rect><path d="M8 21h8"></path><path d="M12 17v4"></path></svg>`,
@@ -40,7 +46,7 @@ const ICON = {
 };
 
 const ACTIONS = {
-  screen: { button: screenBtn, start: "Compartiendo la pantalla", done: "Compartiendo la pantalla", playing: "Duplicando pantalla", call: (d) => pc.shareScreen(d) },
+  screen: { button: screenBtn, start: "Compartiendo la pantalla", done: "Compartiendo la pantalla", playing: "Duplicando pantalla", call: (d) => pc.shareScreen(d, fps) },
   video: { button: videoBtn, start: "Enviando el vídeo", done: "Reproduciendo el vídeo", playing: "Reproduciendo vídeo", call: (d) => pc.sendVideo(d) },
   audio: { button: audioBtn, start: "Enviando el audio", done: "Reproduciendo el audio", playing: "Reproduciendo audio", call: (d) => pc.sendAudio(d) },
 };
@@ -55,6 +61,8 @@ let pairingBusy = false;
 let codeBusy = false;
 let scanning = false;
 let linesLogged = 0;
+let fps = loadFps();
+let mirroring = false;
 
 const rows = new Map();
 const selected = () => devices.find((d) => d.id === selectedId) || null;
@@ -84,6 +92,28 @@ function showNowPlaying(title, deviceName) {
 
 function hideNowPlaying() {
   nowPlaying.hidden = true;
+  mirroring = false;
+}
+
+// --- Fotogramas por segundo --------------------------------------------------
+
+function loadFps() {
+  try {
+    const saved = Number(localStorage.getItem(FPS_KEY));
+    return FPS_CHOICES.includes(saved) ? saved : FPS_DEFAULT;
+  } catch {
+    return FPS_DEFAULT;
+  }
+}
+
+function chooseFps(value) {
+  fps = value;
+  try {
+    localStorage.setItem(FPS_KEY, String(value));
+  } catch {
+    // Sin almacenamiento solo se pierde el recuerdo de la elección.
+  }
+  if (mirroring) setStatus(`Se usarán ${value} fps la próxima vez que compartas la pantalla.`, "info");
 }
 
 // --- Lista de dispositivos ---------------------------------------------------
@@ -370,6 +400,7 @@ async function run(key) {
   try {
     const result = await action.call(device);
     if (result) {
+      mirroring = key === "screen";
       showNowPlaying(action.playing, device.name);
       setStatus(`${action.done} en «${device.name}».`, "success");
     } else {
@@ -405,6 +436,11 @@ screenBtn.addEventListener("click", () => run("screen"));
 videoBtn.addEventListener("click", () => run("video"));
 audioBtn.addEventListener("click", () => run("audio"));
 stopBtn.addEventListener("click", stopPlayback);
+
+for (const input of fpsInputs) {
+  input.checked = Number(input.value) === fps;
+  input.addEventListener("change", () => chooseFps(Number(input.value)));
+}
 
 new ResizeObserver(updateListFade).observe(list);
 window.addEventListener("resize", updateListFade);

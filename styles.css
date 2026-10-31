@@ -871,6 +871,78 @@ h2 {
   50% { height: 100%; }
 }
 
+/* --- Fotogramas por segundo ---------------------------------------------- */
+
+.fps {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 10px 0 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.fps-label {
+  float: left; /* saca la leyenda del borde del fieldset para alinearla en la fila */
+  padding: 0;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.segmented label {
+  position: relative;
+  cursor: pointer;
+}
+
+.segmented input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.segmented span {
+  display: block;
+  min-width: 34px;
+  padding: 4px 8px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--text-faint);
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.segmented label:hover span {
+  color: var(--text-dim);
+  background: var(--surface-hover);
+}
+
+.segmented input:checked + span {
+  color: var(--text);
+  background: var(--accent-soft);
+  border-color: rgba(91, 140, 255, 0.32);
+}
+
+.segmented input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 @media (max-width: 560px) {
   .tagline { display: none; }
   .action-sub { display: none; }
