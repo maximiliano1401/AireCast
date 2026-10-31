@@ -65,6 +65,9 @@ _LOGGER = logging.getLogger(__name__)
 MIRROR_STREAM_TYPE = 110
 PACKET_VIDEO = 0
 PACKET_CODEC = 1
+PACKET_HEARTBEAT = 2
+# Pulso del canal de vídeo (AirMyPC/doubletake): cabecera de tipo 2 sin datos, una vez por segundo.
+HEARTBEAT = struct.pack("<IBBBB", 0, PACKET_HEARTBEAT, 0, 0x1e, 0).ljust(128, b"\0")
 TIMESTAMP_NAMES = ["SubSu", "BePxT", "AfPxT", "BefEn", "EmEnc"]
 
 AUDIO_STREAM_TYPE = 96
@@ -508,6 +511,8 @@ class MirrorSession:
         self.session_uuid = str(uuid.uuid4()).upper()
         self.mac = ":".join(f"{random.randint(0, 255):02X}" for _ in range(6))
         self._keepalive = None
+        self._heartbeat = None
+        self._frame_sent = False
 
     @property
     def legacy(self):
@@ -656,6 +661,7 @@ class MirrorSession:
             raise RuntimeError(f"La TV rechazó el RECORD: {resp.code} {resp.message}")
         self.frame_cipher = AesCtrFrameCipher(*derive_video_keys(key, self.stream_id))
         self._keepalive = asyncio.ensure_future(self._feedback_loop())
+        self._heartbeat = asyncio.ensure_future(self._heartbeat_loop())
         if self.audio:
             # Volumen 0 dB (máximo de AirPlay): el control queda en el mando de la TV.
             resp = await self._authorized(lambda: self.rtsp.exchange(
@@ -739,6 +745,7 @@ class MirrorSession:
             flags = FRAME_IDR if any(n[0] & 0x1F == 5 for n in nals) else 0
             header = _header(len(payload), PACKET_VIDEO, 0, self._frame_time(), flags).ljust(128, b"\0")
             self.writer.write(header + self.frame_cipher.encrypt(payload))
+            self._frame_sent = True
             await self.writer.drain()
             return
         header = _header(len(payload) + 16, PACKET_VIDEO, 0, timing.ntp_now()).ljust(128, b"\0")
@@ -747,9 +754,22 @@ class MirrorSession:
         self.writer.write(header + encrypted_payload)
         await self.writer.drain()
 
+    async def _heartbeat_loop(self):
+        """Pulso en el canal de vídeo para que el Apple TV no lo dé por inactivo (salvapantallas).
+
+        Empieza tras el primer fotograma. Cada write() lleva un paquete completo, así que el pulso
+        nunca queda en medio de un fotograma.
+        """
+        while True:
+            await asyncio.sleep(1)
+            if self._frame_sent and not self.writer.is_closing():
+                self.writer.write(HEARTBEAT)
+
     async def stop(self):
         if self._keepalive:
             self._keepalive.cancel()
+        if self._heartbeat:
+            self._heartbeat.cancel()
         if self.audio:
             self.audio.stop()
             await self.audio.wait_closed()
