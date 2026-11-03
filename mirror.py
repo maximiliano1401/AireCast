@@ -107,8 +107,10 @@ LEGACY_SENDER_INFO = {
 # 75 ms es estable (~115 ms de retraso total). Por encima de ~100 ms la TV no lo respeta en el vídeo
 # y el audio se desincronizaría.
 LEGACY_VIDEO_LATENCY_MS = 65
-# Los receptores legacy restan la época NTP (1900) de nuestras respuestas de hora y comparan con
-# la marca de cada fotograma sin ella: si la llevara, los fotogramas quedarían ~70 años "en el futuro".
+# Los receptores de Apple (Apple TV 3 y Apple TV 4K) restan la época NTP (1900) de nuestras respuestas
+# de hora y comparan con la marca de cada fotograma sin ella, como la manda un iPhone: si la llevara,
+# los fotogramas quedarían ~70 años "en el futuro" (la TV muestra el primero y se queda congelada).
+# La Roku acepta las dos. El audio no cambia: sus paquetes de sincronía sí van con la época NTP.
 NTP_EPOCH = 0x83AA7E80 << 32
 FRAME_IDR = 0x10
 MAX_CODE_ATTEMPTS = 3
@@ -733,8 +735,8 @@ class MirrorSession:
                 _LOGGER.debug("feedback falló: %s", exc)
 
     def _frame_time(self):
-        """Marca de tiempo de un fotograma en el mismo reloj que nuestras respuestas NTP."""
-        return timing.ntp_now() - NTP_EPOCH if self.legacy else timing.ntp_now()
+        """Marca de tiempo de un fotograma: el reloj de nuestras respuestas NTP, contado desde 1970."""
+        return timing.ntp_now() - NTP_EPOCH
 
     async def send_codec(self, sps, pps, width, height):
         self.writer.write(codec_packet(build_avcc(sps, pps), width, height, self._frame_time()))
@@ -750,7 +752,7 @@ class MirrorSession:
             self._frame_sent = True
             await self.writer.drain()
             return
-        header = _header(len(payload) + 16, PACKET_VIDEO, 0, timing.ntp_now()).ljust(128, b"\0")
+        header = _header(len(payload) + 16, PACKET_VIDEO, 0, self._frame_time()).ljust(128, b"\0")
         encrypted_payload = self.cipher.encrypt(payload, aad=header)
         
         self.writer.write(header + encrypted_payload)
@@ -841,8 +843,10 @@ async def mirror_screen(session, ffmpeg, capture, on_status=None):
                         if frame:
                             await session.send_frame(frame)
                             frames += 1
-                            if on_status and frames % (fps * 2) == 0:
-                                on_status(f"{frames} fotogramas enviados")
+                            if frames % (fps * 2) == 0:
+                                _LOGGER.debug("%d fotogramas enviados", frames)
+                                if on_status:
+                                    on_status(f"{frames} fotogramas enviados")
                         frame = []
                     elif ntype == 7:
                         sps = nal
