@@ -201,14 +201,19 @@ Las dependencias del sistema del .deb y el .rpm están en `build.deb.depends` y 
 - **TVs con AirPlay 2 de terceros** (Roku, Samsung, LG…): emparejamiento HomeKit, vídeo cifrado con ChaCha20 y audio.
 - **Apple TV antiguos** (probado con un AppleTV3,2 real en Windows y Linux): emparejamiento legacy + FairPlay SAP, vídeo cifrado con AES-CTR y audio ALAC cifrado con AES-CBC. Si en el Apple TV la seguridad de AirPlay es "Código en pantalla", la TV muestra un código nuevo en cada conexión y AireCast te pide que lo escribas.
 
-Captura de pantalla: en Windows, todo el escritorio (`gdigrab`); en Linux con X11, el monitor principal (`x11grab`). La imagen se codifica con libx264 por CPU a 1280x720.
+Captura de pantalla: en Windows, todo el escritorio (`gdigrab`); en Linux con X11, el monitor principal (`x11grab`). La imagen se codifica con libx264 por CPU (H.264 baseline, preset `superfast`, CRF 20).
 
-Los fotogramas por segundo se eligen en la app, debajo de «Enviar contenido»: 15, 24, 30 (por defecto) o 60. La elección se recuerda y se aplica la próxima vez que compartas la pantalla. Más fps dan un movimiento más fluido, pero gastan más CPU y más red: si el equipo no da abasto (la imagen se atrasa o va a saltos), baja a 24 o 15. A 60 fps el vídeo usa el nivel H.264 3.2 en vez del 3.1.
+La resolución y los fotogramas por segundo se eligen en la app, debajo de «Enviar contenido». La elección se recuerda y se aplica la próxima vez que compartas la pantalla.
+
+- **Resolución**: 720p, 1080p (por defecto), 1440p, 4K o **Nativa** (la de la pantalla, sin escalar: es la más nítida y la TV la ajusta a la suya). Por encima de 1080p hace falta un receptor que lo admita, como el Apple TV 4K; la Roku y el Apple TV 3 llegan a 1080p. Ojo: una pantalla 16:10 de 1920x1200 en «Nativa» ya pasa de 1080p.
+- **fps**: 15, 24, 30 (por defecto) o 60. Más fps dan un movimiento más fluido.
+
+Más resolución y más fps gastan más CPU y más red: si el equipo no da abasto (la imagen se atrasa o va a saltos), baja la resolución o los fps. Medido en un Ryzen de 8 núcleos, 1080p a 30 fps ocupa ~1 núcleo para codificar y unos 5 Mb/s con vídeo en pantalla; el bitrate tiene un tope de ~0,2 bits por píxel (12 Mb/s en 1080p30, 25 como máximo) para no saturar la Wi-Fi. El nivel H.264 lo elige x264 según el tamaño y los fps (4.0 en 1080p30, 4.2 en 1080p60, 5.x por encima), y el tamaño que se anuncia a la TV se lee del propio vídeo (`sps_size()` en `mirror.py`).
 
 **Wayland** (`XDG_SESSION_TYPE=wayland`): `x11grab` no ve las ventanas, así que la captura la hace `screencast_linux.py` con el portal del escritorio (xdg-desktop-portal, ScreenCast) y PipeWire:
 
 - La primera vez, el escritorio pregunta qué pantalla compartir. AireCast guarda el permiso (token de restauración) en `screencast-token`, junto a las credenciales, y las siguientes veces ya no pregunta. Para volver a elegir, borra ese archivo.
-- `gst-launch-1.0` lee la pantalla de PipeWire y la escala a 1280x720; FFmpeg la codifica con libx264, como en X11.
+- `gst-launch-1.0` lee la pantalla de PipeWire y la escala a la resolución elegida (con «Nativa», al tamaño que informa el portal); FFmpeg la codifica con libx264, como en X11.
 - Mientras se duplica, el escritorio muestra su indicador de pantalla compartida. Si lo detienes desde ahí, el duplicado termina.
 
 ### Audio solo en la TV

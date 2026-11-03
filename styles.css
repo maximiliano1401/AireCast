@@ -871,25 +871,33 @@ h2 {
   50% { height: 100%; }
 }
 
-/* --- Fotogramas por segundo ---------------------------------------------- */
+/* --- Ajustes del duplicado (resolución y fps) --------------------------- */
 
-.fps {
+.setting {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 6px 10px;
   margin: 10px 0 0;
   padding: 0;
   border: 0;
   min-width: 0;
 }
 
-.fps-label {
+.setting-label {
   float: left; /* saca la leyenda del borde del fieldset para alinearla en la fila */
   padding: 0;
   font-size: 11.5px;
   font-weight: 500;
   color: var(--text-dim);
+}
+
+.setting-hint {
+  margin: 5px 0 0;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--text-faint);
 }
 
 .segmented {

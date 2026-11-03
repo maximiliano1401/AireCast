@@ -132,8 +132,19 @@
             <span class="action-sub">Música en el altavoz</span>
           </button>
         </div>
-        <fieldset id="fpsPicker" class="fps">
-          <legend class="fps-label">Fotogramas por segundo al compartir</legend>
+        <fieldset id="resolutionPicker" class="setting">
+          <legend class="setting-label">Resolución al compartir</legend>
+          <div class="segmented">
+            <label><input type="radio" name="resolution" value="720p"><span>720p</span></label>
+            <label><input type="radio" name="resolution" value="1080p"><span>1080p</span></label>
+            <label><input type="radio" name="resolution" value="1440p"><span>1440p</span></label>
+            <label><input type="radio" name="resolution" value="2160p"><span>4K</span></label>
+            <label><input type="radio" name="resolution" value="native"><span>Nativa</span></label>
+          </div>
+        </fieldset>
+        <p class="setting-hint">«Nativa» usa la de esta pantalla, sin escalar: es la más nítida. Por encima de 1080p (también la nativa si tu pantalla es mayor) hace falta un receptor que lo admita, como el Apple TV 4K.</p>
+        <fieldset id="fpsPicker" class="setting">
+          <legend class="setting-label">Fotogramas por segundo al compartir</legend>
           <div class="segmented">
             <label><input type="radio" name="fps" value="15"><span>15</span></label>
             <label><input type="radio" name="fps" value="24"><span>24</span></label>

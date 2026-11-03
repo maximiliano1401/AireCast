@@ -153,9 +153,9 @@ ipcMain.handle("send-audio", async (_e, device) => {
 });
 
 // Duplicado AirPlay 2 (como PigeonCast): el puente captura con FFmpeg y envía H.264 cifrado.
-ipcMain.handle("share-screen", async (_e, device, fps) => {
-  log(`Iniciando duplicado de pantalla en ${device.name} a ${fps} fps…\n`);
-  return call("mirror", { device: device.id, ffmpeg: findFfmpeg(), fps });
+ipcMain.handle("share-screen", async (_e, device, fps, resolution) => {
+  log(`Iniciando duplicado de pantalla en ${device.name} (${resolution}, ${fps} fps)…\n`);
+  return call("mirror", { device: device.id, ffmpeg: findFfmpeg(), fps, resolution });
 });
 
 app.whenReady().then(() => {

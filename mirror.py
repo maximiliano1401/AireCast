@@ -84,7 +84,11 @@ AUDIO_LATENCY = AUDIO_RATE // 40  # 25 ms: si va atrasado, bajar; si va adelanta
 AUDIO_MAX_BUFFER = AUDIO_RATE // 25 * AUDIO_CHANNELS * 2  # descarta audio con >40 ms de retraso
 MUTE_LOCAL = True  # silenciar el PC mientras se duplica (solo con audiocap: ver platform_win/platform_linux)
 
-VIDEO_WIDTH, VIDEO_HEIGHT = 1280, 720
+# Resoluciones del selector de la interfaz (RESOLUTION_CHOICES en renderer.js). «native»: la de la
+# pantalla, sin escalar (la TV la ajusta a la suya).
+VIDEO_RESOLUTIONS = {"720p": (1280, 720), "1080p": (1920, 1080), "1440p": (2560, 1440),
+                     "2160p": (3840, 2160), "native": (None, None)}
+VIDEO_RESOLUTION = "1080p"  # por defecto
 VIDEO_FPS = 30  # por defecto
 VIDEO_FPS_CHOICES = (15, 24, 30, 60)  # los del selector de la interfaz (FPS_CHOICES en renderer.js)
 
@@ -199,6 +203,59 @@ def codec_packet(avcc, width, height, ntp):
     dims = struct.pack("<12f", w, h, 0.0, 0.0, 0.0, 0.0, w, h, 0.0, 0.0, w, h)
     header = _header(len(avcc), PACKET_CODEC, 0x16, ntp) + dims
     return header.ljust(128, b"\0") + avcc
+
+
+def sps_size(sps):
+    """Ancho y alto de la imagen según un SPS de H.264 (NAL completo, con su byte de cabecera)."""
+    data = re.sub(b"\x00\x00\x03", b"\x00\x00", sps[1:])  # quita los bytes de prevención de emulación
+    bits = "".join(f"{byte:08b}" for byte in data)
+    pos = 0
+
+    def u(n):
+        nonlocal pos
+        pos += n
+        return int(bits[pos - n:pos], 2)
+
+    def ue():
+        nonlocal pos
+        zeros = bits.index("1", pos) - pos
+        pos += zeros
+        return u(zeros + 1) - 1
+
+    def se():
+        value = ue()
+        return (value + 1) // 2 if value % 2 else -(value // 2)
+
+    profile = u(8)
+    u(16)  # restricciones y nivel
+    ue()  # seq_parameter_set_id
+    if profile in (100, 110, 122, 244, 44, 83, 86, 118, 128, 138, 139, 134, 135):
+        if ue() == 3:  # chroma_format_idc
+            u(1)
+        ue(), ue(), u(1)
+        if u(1):
+            raise ValueError("SPS con matrices de escalado: no soportado")
+    ue()  # log2_max_frame_num_minus4
+    poc_type = ue()
+    if poc_type == 0:
+        ue()
+    elif poc_type == 1:
+        u(1), se(), se()
+        for _ in range(ue()):
+            se()
+    ue(), u(1)  # max_num_ref_frames, gaps_in_frame_num_allowed
+    width = (ue() + 1) * 16
+    map_units = ue() + 1
+    frame_mbs_only = u(1)
+    if not frame_mbs_only:
+        u(1)
+    u(1)  # direct_8x8_inference
+    height = (2 - frame_mbs_only) * map_units * 16
+    if u(1):  # recorte (4:2:0: en pares de píxeles)
+        left, right, top, bottom = ue(), ue(), ue(), ue()
+        width -= 2 * (left + right)
+        height -= 2 * (2 - frame_mbs_only) * (top + bottom)
+    return width, height
 
 
 def build_avcc(sps, pps):
@@ -738,7 +795,9 @@ class MirrorSession:
         """Marca de tiempo de un fotograma: el reloj de nuestras respuestas NTP, contado desde 1970."""
         return timing.ntp_now() - NTP_EPOCH
 
-    async def send_codec(self, sps, pps, width, height):
+    async def send_codec(self, sps, pps):
+        width, height = sps_size(sps)
+        _LOGGER.debug("Resolución del vídeo: %dx%d", width, height)
         self.writer.write(codec_packet(build_avcc(sps, pps), width, height, self._frame_time()))
         await self.writer.drain()
 
@@ -797,27 +856,50 @@ class MirrorSession:
             self.connection.close()
 
 
-def screen_capture(state_dir, fps=VIDEO_FPS):
-    """Captura de pantalla de esta plataforma con el tamaño del duplicado y esos fps (ver mirror_screen)."""
+def screen_capture(state_dir, fps=VIDEO_FPS, resolution=VIDEO_RESOLUTION):
+    """Captura de pantalla de esta plataforma con esa resolución y esos fps (ver mirror_screen).
+
+    Con «native», ancho y alto son None: la captura no escala (Wayland los fija al abrirse).
+    """
     if fps not in VIDEO_FPS_CHOICES:
         raise ValueError(f"fps no admitidos: {fps} (valores posibles: {', '.join(map(str, VIDEO_FPS_CHOICES))})")
-    return plat.screen_capture(VIDEO_WIDTH, VIDEO_HEIGHT, fps, state_dir)
+    if resolution not in VIDEO_RESOLUTIONS:
+        raise ValueError(f"Resolución no admitida: {resolution} (valores posibles: {', '.join(VIDEO_RESOLUTIONS)})")
+    width, height = VIDEO_RESOLUTIONS[resolution]
+    return plat.screen_capture(width, height, fps, state_dir)
+
+
+def max_bitrate(width, height, fps):
+    """Tope de bitrate en Mb/s: ~0,2 bits por píxel (12 Mb/s en 1080p30), entre 4 y 25 para no saturar la Wi-Fi.
+
+    Sin tamaño conocido (resolución nativa en Windows o X11), el máximo.
+    """
+    if not width:
+        return 25
+    return round(min(25, max(4, 0.2 * width * height * fps / 1e6)), 1)
 
 
 async def mirror_screen(session, ffmpeg, capture, on_status=None):
     """Codifica la captura (ya abierta) con FFmpeg (H.264 Annex-B) y la envía por la sesión."""
     width, height, fps = capture.width, capture.height, capture.fps
-    # Nivel H.264: 3.1 llega justo a 1280x720 a 30 fps; a 60 fps hace falta 3.2.
-    level = "3.1" if fps <= 30 else "3.2"
-    _LOGGER.debug("Codificando %dx%d a %d fps (H.264 baseline, nivel %s)", width, height, fps, level)
+    if width:  # escala sin deformar y rellena con bandas negras
+        scale = f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2"
+    else:  # nativa: solo recorta a tamaño par, que exige yuv420p
+        scale = "crop=trunc(iw/2)*2:trunc(ih/2)*2"
+    bitrate = max_bitrate(width, height, fps)
+    _LOGGER.debug("Codificando %s a %d fps (H.264 baseline, tope %s Mb/s)",
+                  f"{width}x{height}" if width else "a resolución nativa", fps, bitrate)
     # -nostdin: que FFmpeg no lea teclas de su stdin, que es la tubería de comandos del puente
     # (o, en Wayland, el vídeo crudo de pipe:0).
     proc = await asyncio.create_subprocess_exec(
         ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin",
         *capture.ffmpeg_input_args(),
-        "-vf", f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2",
-        "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
-        "-profile:v", "baseline", "-level", level, "-pix_fmt", "yuv420p",
+        "-vf", scale,
+        # superfast y CRF 20: ~4,7 Mb/s en 1080p30 (ultrafast y CRF 23 daban 1,7 y se veía pixelado).
+        # El nivel H.264 lo elige x264 según tamaño, fps y tope (4.0 en 1080p30, 4.2 en 1080p60…).
+        "-c:v", "libx264", "-preset", "superfast", "-tune", "zerolatency", "-crf", "20",
+        "-maxrate", f"{bitrate}M", "-bufsize", f"{bitrate}M",
+        "-profile:v", "baseline", "-pix_fmt", "yuv420p",
         "-g", str(fps), "-keyint_min", str(fps),
         "-x264-params", "aud=1:repeat-headers=1",
         "-f", "h264", "-",
@@ -854,7 +936,7 @@ async def mirror_screen(session, ffmpeg, capture, on_status=None):
                         pps = nal
                     else:
                         if sps and pps and sent_codec != (sps, pps):
-                            await session.send_codec(sps, pps, width, height)
+                            await session.send_codec(sps, pps)
                             sent_codec = (sps, pps)
                         if sent_codec:
                             frame.append(nal)

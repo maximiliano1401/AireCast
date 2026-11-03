@@ -49,6 +49,7 @@ class ScreenCastPortal:
         self.token_file = Path(token_file)
         self.conn = None
         self.session = None
+        self.size = None  # (ancho, alto) de la pantalla elegida, si el portal lo informa
 
     def open(self):
         """Devuelve (descriptor de PipeWire, id del nodo). Bloquea mientras se responde al diálogo."""
@@ -73,6 +74,8 @@ class ScreenCastPortal:
                 raise PortalError("El portal no devolvió ninguna pantalla")
             node, props = streams[0]
             _LOGGER.debug("Portal: nodo PipeWire %d, %s", node, {k: v[1] for k, v in props.items()})
+            if "size" in props:
+                self.size = tuple(props["size"][1])
             reply = self.conn.send_and_get_reply(
                 new_method_call(PORTAL, "OpenPipeWireRemote", "oa{sv}", (self.session, {})),
                 timeout=REQUEST_TIMEOUT)
@@ -150,6 +153,12 @@ class WaylandScreenCapture:
 
     async def open(self):
         fd, node = await asyncio.get_running_loop().run_in_executor(None, self.portal.open)
+        if self.width is None:  # resolución nativa: la de la pantalla, en números pares (yuv420p)
+            if not self.portal.size:
+                os.close(fd)
+                self.portal.close()
+                raise RuntimeError("El portal no informó del tamaño de la pantalla: elige otra resolución")
+            self.width, self.height = (value // 2 * 2 for value in self.portal.size)
         read, write = os.pipe()
         try:
             self._gst = await asyncio.create_subprocess_exec(

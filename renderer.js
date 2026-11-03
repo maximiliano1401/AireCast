@@ -33,11 +33,17 @@ const statusText = $("statusText");
 const logBody = $("log");
 const logCount = $("logCount");
 const fpsInputs = document.querySelectorAll('#fpsPicker input[name="fps"]');
+const resolutionInputs = document.querySelectorAll('#resolutionPicker input[name="resolution"]');
 
-// Mismos valores que VIDEO_FPS_CHOICES en mirror.py. La elección se recuerda en este equipo.
+// Ajustes del duplicado, que se recuerdan en este equipo. Mismos valores que VIDEO_FPS_CHOICES y
+// VIDEO_RESOLUTIONS en mirror.py.
 const FPS_CHOICES = [15, 24, 30, 60];
 const FPS_DEFAULT = 30;
 const FPS_KEY = "airecast.fps";
+const RESOLUTION_CHOICES = ["720p", "1080p", "1440p", "2160p", "native"];
+const RESOLUTION_DEFAULT = "1080p";
+const RESOLUTION_KEY = "airecast.resolution";
+const RESOLUTION_NAMES = { "720p": "720p", "1080p": "1080p", "1440p": "1440p", "2160p": "4K", native: "la resolución nativa" };
 
 const ICON = {
   tv: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="13" rx="2"></rect><path d="M8 21h8"></path><path d="M12 17v4"></path></svg>`,
@@ -46,7 +52,7 @@ const ICON = {
 };
 
 const ACTIONS = {
-  screen: { button: screenBtn, start: "Compartiendo la pantalla", done: "Compartiendo la pantalla", playing: "Duplicando pantalla", call: (d) => pc.shareScreen(d, fps) },
+  screen: { button: screenBtn, start: "Compartiendo la pantalla", done: "Compartiendo la pantalla", playing: "Duplicando pantalla", call: (d) => pc.shareScreen(d, fps, resolution) },
   video: { button: videoBtn, start: "Enviando el vídeo", done: "Reproduciendo el vídeo", playing: "Reproduciendo vídeo", call: (d) => pc.sendVideo(d) },
   audio: { button: audioBtn, start: "Enviando el audio", done: "Reproduciendo el audio", playing: "Reproduciendo audio", call: (d) => pc.sendAudio(d) },
 };
@@ -61,7 +67,8 @@ let pairingBusy = false;
 let codeBusy = false;
 let scanning = false;
 let linesLogged = 0;
-let fps = loadFps();
+let fps = loadSetting(FPS_KEY, (v) => FPS_CHOICES.includes(Number(v)), FPS_DEFAULT, Number);
+let resolution = loadSetting(RESOLUTION_KEY, (v) => RESOLUTION_CHOICES.includes(v), RESOLUTION_DEFAULT, String);
 let mirroring = false;
 
 const rows = new Map();
@@ -97,23 +104,32 @@ function hideNowPlaying() {
 
 // --- Fotogramas por segundo --------------------------------------------------
 
-function loadFps() {
+function loadSetting(key, isValid, fallback, convert) {
   try {
-    const saved = Number(localStorage.getItem(FPS_KEY));
-    return FPS_CHOICES.includes(saved) ? saved : FPS_DEFAULT;
+    const saved = localStorage.getItem(key);
+    return saved !== null && isValid(saved) ? convert(saved) : fallback;
   } catch {
-    return FPS_DEFAULT;
+    return fallback;
   }
+}
+
+function saveSetting(key, value, pendingMessage) {
+  try {
+    localStorage.setItem(key, String(value));
+  } catch {
+    // Sin almacenamiento solo se pierde el recuerdo de la elección.
+  }
+  if (mirroring) setStatus(`${pendingMessage} la próxima vez que compartas la pantalla.`, "info");
 }
 
 function chooseFps(value) {
   fps = value;
-  try {
-    localStorage.setItem(FPS_KEY, String(value));
-  } catch {
-    // Sin almacenamiento solo se pierde el recuerdo de la elección.
-  }
-  if (mirroring) setStatus(`Se usarán ${value} fps la próxima vez que compartas la pantalla.`, "info");
+  saveSetting(FPS_KEY, value, `Se usarán ${value} fps`);
+}
+
+function chooseResolution(value) {
+  resolution = value;
+  saveSetting(RESOLUTION_KEY, value, `Se usará ${RESOLUTION_NAMES[value]}`);
 }
 
 // --- Lista de dispositivos ---------------------------------------------------
@@ -440,6 +456,11 @@ stopBtn.addEventListener("click", stopPlayback);
 for (const input of fpsInputs) {
   input.checked = Number(input.value) === fps;
   input.addEventListener("change", () => chooseFps(Number(input.value)));
+}
+
+for (const input of resolutionInputs) {
+  input.checked = input.value === resolution;
+  input.addEventListener("change", () => chooseResolution(input.value));
 }
 
 new ResizeObserver(updateListFade).observe(list);
