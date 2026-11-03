@@ -82,6 +82,8 @@ AUDIO_SPF = 352  # muestras por paquete
 AUDIO_PACKET_BYTES = AUDIO_SPF * AUDIO_CHANNELS * 2
 AUDIO_LATENCY = AUDIO_RATE // 40  # 25 ms: si va atrasado, bajar; si va adelantado o se corta, subir
 AUDIO_MAX_BUFFER = AUDIO_RATE // 25 * AUDIO_CHANNELS * 2  # descarta audio con >40 ms de retraso
+AUDIO_NETWORK_MARGIN_MS = 70  # margen sobre el que pide el receptor, para la red y los reenvíos
+AUDIO_BACKLOG = AUDIO_RATE * 4 // AUDIO_SPF  # paquetes de audio guardados para reenviarlos (~4 s)
 MUTE_LOCAL = True  # silenciar el PC mientras se duplica (solo con audiocap: ver platform_win/platform_linux)
 
 # Resoluciones del selector de la interfaz (RESOLUTION_CHOICES en renderer.js). «native»: la de la
@@ -265,21 +267,20 @@ def build_avcc(sps, pps):
 
 
 def split_annexb(buf):
-    """Divide un flujo Annex-B en NALs completos; devuelve (nals, resto)."""
+    """Divide un flujo Annex-B en NALs completos; devuelve (nals, resto).
+
+    Busca los códigos de inicio con bytes.find (en C): recorrerlo byte a byte en Python bloqueaba
+    el bucle de eventos hasta ~20 ms por trozo con bitrates altos, y el audio salía a ráfagas.
+    Un código de 4 bytes (00 00 00 01) contiene el de 3: su primer cero cae al final del NAL
+    anterior y se quita con los demás ceros finales.
+    """
     nals, start = [], None
-    i, n = 0, len(buf)
-    while i + 3 <= n:
-        if buf[i] == 0 and buf[i + 1] == 0 and (buf[i + 2] == 1 or (i + 4 <= n and buf[i + 2] == 0 and buf[i + 3] == 1)):
-            sc = 3 if buf[i + 2] == 1 else 4
-            if start is not None:
-                end = i
-                while end > start and buf[end - 1] == 0:
-                    end -= 1
-                nals.append(bytes(buf[start:end]))
-            start = i + sc
-            i += sc
-        else:
-            i += 1
+    pos = buf.find(b"\x00\x00\x01")
+    while pos != -1:
+        if start is not None:
+            nals.append(bytes(buf[start:pos]).rstrip(b"\x00"))
+        start = pos + 3
+        pos = buf.find(b"\x00\x00\x01", start)
     if start is None:
         return nals, bytes(buf)
     return nals, b"\x00\x00\x00\x01" + bytes(buf[start:])
@@ -318,10 +319,23 @@ class LoopbackDevice(miniaudio.CaptureDevice):
 
 
 class _ControlProtocol(asyncio.DatagramProtocol):
-    """Socket del controlPort: envía sync e ignora las peticiones de retransmisión."""
+    """Socket del controlPort: envía sync y reenvía los paquetes de audio que la TV no recibió a tiempo."""
+
+    def __init__(self):
+        self.transport = None
+        self.audio = None  # AudioStream cuyos paquetes se reenvían
+
+    def connection_made(self, transport):
+        self.transport = transport
 
     def datagram_received(self, data, addr):
-        _LOGGER.debug("controlPort recibió %d bytes (retransmisión no soportada)", len(data))
+        # Petición de retransmisión: 0x80 0xD5, nº de secuencia, primer paquete perdido y cuántos.
+        if len(data) == 8 and data[1] & 0x7F == 0x55:
+            first, count = struct.unpack(">HH", data[4:8])
+            resent = self.audio.resend(first, count, self.transport, addr) if self.audio else 0
+            _LOGGER.debug("La TV pide reenviar %d paquete(s) de audio desde el %d: reenviados %d", count, first, resent)
+        else:
+            _LOGGER.debug("controlPort recibió %d bytes: %s", len(data), data.hex())
 
 
 class AudioStream:
@@ -344,9 +358,11 @@ class AudioStream:
         self._task = None
         self._capture_task = None
         self._seq = random.randint(0, 2**16 - 1)
+        self._backlog = {}  # nº de secuencia -> paquete enviado, para reenviarlo
 
     async def setup(self):
-        self.control, _ = await bind_udp(_ControlProtocol, self.session.connection.local_ip)
+        self.control, control = await bind_udp(_ControlProtocol, self.session.connection.local_ip)
+        control.audio = self
         resp = await self.session._setup({"streams": [{
             "type": AUDIO_STREAM_TYPE,
             "ct": 1,  # PCM sin comprimir (16 bits big-endian)
@@ -365,6 +381,12 @@ class AudioStream:
         }]})
         _LOGGER.debug("SETUP de audio: %s", resp)
         stream = resp["streams"][0]
+        arrival = stream.get("arrivalToRenderLatencyMs")
+        if arrival is not None:
+            # La TV dice cuánto tarda en reproducir lo que le llega (Apple TV 4K: 27 ms): con solo
+            # AUDIO_LATENCY casi todo llega tarde y suena robótico. Sin pasar del máximo anunciado.
+            self.latency = min(AUDIO_RATE * (arrival + AUDIO_NETWORK_MARGIN_MS) // 1000, AUDIO_LATENCY * 4)
+            _LOGGER.debug("Margen del audio: %d ms (la TV pide %d ms)", self.latency * 1000 // AUDIO_RATE, arrival)
         await self.connect(stream["dataPort"], stream.get("controlPort"))
 
     async def connect(self, data_port, control_port):
@@ -475,8 +497,25 @@ class AudioStream:
         # El nonce que usará este encrypt va al final del paquete (8 bytes), como en pyatv.
         nonce = self.cipher.out_nonce
         payload = self.cipher.encrypt(pcm, aad=header[4:12])
-        self.data.sendto(header + payload + nonce[-8:])
+        self._send(header + payload + nonce[-8:])
+
+    def _send(self, packet):
+        """Envía un paquete de audio y lo guarda por si la TV pide que se reenvíe."""
+        self.data.sendto(packet)
+        self._backlog[self._seq] = packet
+        self._backlog.pop((self._seq - AUDIO_BACKLOG) % 2**16, None)
         self._seq = (self._seq + 1) % 2**16
+
+    def resend(self, first, count, transport, addr):
+        """Reenvía por el canal de control los paquetes pedidos que sigan guardados; devuelve cuántos."""
+        resent = 0
+        for seq in range(first, first + count):
+            packet = self._backlog.get(seq % 2**16)
+            if packet:
+                # Como pyatv: 0x80 0xD6, el nº de secuencia original y el paquete tal cual.
+                transport.sendto(b"\x80\xd6" + packet[2:4] + packet, addr)
+                resent += 1
+        return resent
 
     def stop(self):
         if self._task:
@@ -546,8 +585,7 @@ class LegacyAudioStream(AudioStream):
         # Solo se cifran los bloques completos de 16 bytes; el resto viaja en claro.
         full = len(frame) // 16 * 16
         aes = Cipher(algorithms.AES(self.aes_key), modes.CBC(self.aes_iv)).encryptor()
-        self.data.sendto(header + aes.update(frame[:full]) + aes.finalize() + frame[full:])
-        self._seq = (self._seq + 1) % 2**16
+        self._send(header + aes.update(frame[:full]) + aes.finalize() + frame[full:])
 
 
 class MirrorSession:
@@ -659,7 +697,7 @@ class MirrorSession:
 
         # 2. SETUP media-first: crea la sesión junto con el flujo de audio (ALAC, AES-CBC con la
         #    misma clave FairPlay). El receptor lo exige aunque se desactive el audio.
-        self.control, _ = await bind_udp(_ControlProtocol, self.connection.local_ip)
+        self.control, control = await bind_udp(_ControlProtocol, self.connection.local_ip)
         resp = await self._setup({
             "deviceID": self.mac,
             "macAddress": self.mac,
@@ -690,6 +728,7 @@ class MirrorSession:
         audio_ports = next((s for s in resp.get("streams", []) if s.get("type") == AUDIO_STREAM_TYPE), None)
         if self.want_audio and audio_ports and audio_ports.get("dataPort"):
             audio = LegacyAudioStream(self, key, iv)
+            control.audio = audio
             await audio.connect(audio_ports["dataPort"], audio_ports.get("controlPort"))
             self.audio = audio
         elif self.want_audio:

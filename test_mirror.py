@@ -22,6 +22,56 @@ class SpsSizeTest(unittest.TestCase):
                 self.assertEqual(mirror.sps_size(bytes.fromhex(sps)), size)
 
 
+class SplitAnnexbTest(unittest.TestCase):
+    def test_start_codes_of_3_and_4_bytes(self):
+        stream = b"\x00\x00\x00\x01\x09\xf0" + b"\x00\x00\x01\x67\x42\x00" + b"\x00\x00\x00\x01\x65\x88"
+        nals, rest = mirror.split_annexb(stream)
+        self.assertEqual(nals, [b"\x09\xf0", b"\x67\x42"])  # el cero final del SPS se quita
+        self.assertEqual(rest, b"\x00\x00\x00\x01\x65\x88")  # el último NAL aún puede crecer
+
+    def test_split_across_chunks(self):
+        stream = b"\x00\x00\x00\x01\x09\xf0\x00\x00\x00\x01\x65\x88\x84\x00\x00\x00\x01\x09\xf0"
+        nals, rest = [], b""
+        for i in range(0, len(stream), 3):  # trozos que cortan los códigos de inicio
+            found, rest = mirror.split_annexb(rest + stream[i:i + 3])
+            nals += found
+        self.assertEqual(nals, [b"\x09\xf0", b"\x65\x88\x84"])
+
+    def test_no_start_code(self):
+        self.assertEqual(mirror.split_annexb(b"\x00\x00"), ([], b"\x00\x00"))
+
+
+class _Sent:
+    def __init__(self):
+        self.packets = []
+
+    def sendto(self, packet, addr=None):
+        self.packets.append(packet)
+
+
+class AudioResendTest(unittest.TestCase):
+    def stream(self, first_seq):
+        audio = mirror.AudioStream(session=None)
+        audio.data, audio._seq = _Sent(), first_seq
+        return audio
+
+    def test_resends_saved_packets(self):
+        audio = self.stream(65534)  # el número de secuencia da la vuelta: 65534, 65535, 0, 1
+        for i in range(4):
+            audio._send(bytes([0x80, 0x60]) + ((65534 + i) % 65536).to_bytes(2, "big") + b"datos")
+        control = _Sent()
+        self.assertEqual(audio.resend(65535, 2, control, ("tv", 1)), 2)
+        self.assertEqual(control.packets[0], b"\x80\xd6\xff\xff\x80\x60\xff\xffdatos")
+        self.assertEqual(control.packets[1][:4], b"\x80\xd6\x00\x00")
+
+    def test_forgets_old_packets(self):
+        audio = self.stream(0)
+        for _ in range(mirror.AUDIO_BACKLOG + 10):
+            audio._send(b"\x80\x60\x00\x00paquete")
+        self.assertEqual(len(audio._backlog), mirror.AUDIO_BACKLOG)
+        self.assertEqual(audio.resend(0, 5, _Sent(), None), 0)  # ya no están
+
+
 class MaxBitrateTest(unittest.TestCase):
     def test_scales_with_pixels_and_fps(self):
         self.assertEqual(mirror.max_bitrate(1280, 720, 30), 5.5)
