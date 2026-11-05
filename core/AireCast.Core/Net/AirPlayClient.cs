@@ -39,11 +39,16 @@ public sealed class AirPlayClient(AirPlayConnection connection)
     private const string ControlWriteInfo = "Control-Write-Encryption-Key";
     private const string ControlReadInfo = "Control-Read-Encryption-Key";
 
+    private const string PlistContentType = "application/x-apple-binary-plist";
+
     private readonly string _dacpId = Convert.ToHexString(RandomNumberGenerator.GetBytes(8));
     private readonly string _activeRemote = RandomNumberGenerator.GetInt32(int.MaxValue).ToString(CultureInfo.InvariantCulture);
+    private readonly int _sessionId = RandomNumberGenerator.GetInt32(int.MaxValue);
     private int _cseq;
 
     public AirPlayConnection Connection => connection;
+
+    private string SessionUri => $"rtsp://{connection.LocalAddress}/{_sessionId}";
 
     /// <summary>La verificación de HomeKit, para derivar las claves de eventos y datos; null en legacy.</summary>
     public HomeKitPairVerify? HomeKit { get; private set; }
@@ -51,7 +56,7 @@ public sealed class AirPlayClient(AirPlayConnection connection)
     /// <exception cref="IOException">La TV no respondió con un plist.</exception>
     public async Task<ReceiverInfo> GetInfoAsync(CancellationToken ct = default)
     {
-        AirPlayResponse response = await RtspAsync("GET", "/info", ct);
+        AirPlayResponse response = await RtspAsync("GET", "/info", null, ct);
         if (!response.IsSuccess)
             throw new IOException($"GET /info: {response.Code} {response.Message}");
         if (BinaryPlistReader.Read(response.Body) is not Dictionary<string, object?> info)
@@ -78,6 +83,23 @@ public sealed class AirPlayClient(AirPlayConnection connection)
         HomeKit = verify;
     }
 
+    /// <summary>SETUP con ese contenido; devuelve el plist de la respuesta.</summary>
+    /// <exception cref="IOException">La TV rechazó el SETUP.</exception>
+    public async Task<Dictionary<string, object?>> SetupAsync(Dictionary<string, object?> body, CancellationToken ct = default)
+    {
+        AirPlayResponse response = await RtspAsync("SETUP", null, body, ct);
+        if (!response.IsSuccess)
+            throw new IOException($"La TV rechazó el SETUP: {response.Code} {response.Message}");
+        return response.Body.Length > 0 && BinaryPlistReader.Read(response.Body) is Dictionary<string, object?> plist ? plist : [];
+    }
+
+    /// <summary>Otra petición de la sesión (RECORD, TEARDOWN); sin comprobar la respuesta.</summary>
+    public Task<AirPlayResponse> SessionRequestAsync(string method, Dictionary<string, object?>? body = null, CancellationToken ct = default) =>
+        RtspAsync(method, null, body, ct);
+
+    /// <summary>El aviso periódico de que el emisor sigue vivo.</summary>
+    public Task<AirPlayResponse> FeedbackAsync(CancellationToken ct = default) => RtspAsync("POST", "/feedback", null, ct);
+
     private async Task<byte[]> PairVerifyAsync(byte[] body, bool homeKit, CancellationToken ct)
     {
         var headers = new List<KeyValuePair<string, string>>
@@ -94,13 +116,19 @@ public sealed class AirPlayClient(AirPlayConnection connection)
         return response.Body;
     }
 
-    private Task<AirPlayResponse> RtspAsync(string method, string uri, CancellationToken ct) =>
-        connection.SendAsync($"{method} {uri} RTSP/1.0",
-        [
+    private Task<AirPlayResponse> RtspAsync(string method, string? uri, Dictionary<string, object?>? body, CancellationToken ct)
+    {
+        var headers = new List<KeyValuePair<string, string>>
+        {
             new("User-Agent", RtspUserAgent),
-            new("CSeq", (_cseq++).ToString(CultureInfo.InvariantCulture)),
+            new("CSeq", Interlocked.Increment(ref _cseq).ToString(CultureInfo.InvariantCulture)),
             new("DACP-ID", _dacpId),
             new("Active-Remote", _activeRemote),
             new("Client-Instance", _dacpId),
-        ], null, ct);
+        };
+        if (body is not null)
+            headers.Add(new("Content-Type", PlistContentType));
+        return connection.SendAsync($"{method} {uri ?? SessionUri} RTSP/1.0", headers,
+            body is null ? null : BinaryPlistWriter.Write(body), ct);
+    }
 }
