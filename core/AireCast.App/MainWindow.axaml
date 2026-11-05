@@ -74,8 +74,7 @@
               <TextBlock Text="Fotogramas por segundo" Classes="label" />
               <ComboBox x:Name="FpsBox" Grid.Column="1" MinWidth="150" SelectionChanged="OnSettingChanged" />
             </Grid>
-            <TextBlock Classes="meta" TextWrapping="Wrap"
-                       Text="«Nativa» usa la de esta pantalla, sin escalar: es la más nítida. Por encima de 1080p (también la nativa si tu pantalla es mayor) hace falta un receptor que lo admita, como el Apple TV 4K." />
+            <TextBlock x:Name="ResolutionHint" Classes="meta" TextWrapping="Wrap" />
             <Button x:Name="ShareButton" Classes="primary" Content="Compartir pantalla" HorizontalAlignment="Stretch"
                     HorizontalContentAlignment="Center" IsEnabled="False" Click="OnShare" />
           </StackPanel>

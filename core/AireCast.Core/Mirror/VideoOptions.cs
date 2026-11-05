@@ -22,6 +22,14 @@ public sealed record VideoOptions(int? Width, int? Height, int Fps)
             ["native"] = (null, null),
         };
 
+    /// <summary>
+    /// Lo que decodifican los Apple TV antiguos: hasta 1080p. Una pantalla 16:10 de 1920x1200 ya pide
+    /// el nivel H.264 5.0, así que la resolución nativa tampoco es segura.
+    /// </summary>
+    public static readonly IReadOnlyList<string> LegacyResolutions = ["720p", "1080p"];
+
+    public bool FitsLegacyReceiver => Width is <= 1920 && Height is <= 1080;
+
     /// <exception cref="ArgumentException">Esa resolución o esos fps no existen.</exception>
     public static VideoOptions Create(string resolution = "1080p", int fps = 30)
     {

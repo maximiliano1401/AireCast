@@ -28,6 +28,9 @@ public static class MirrorController
     public static async Task<long> RunAsync(AirPlayDevice device, Credentials credentials, IScreenSource source, string ffmpeg,
         MirrorCallbacks callbacks, bool withAudio = true, CancellationToken ct = default)
     {
+        if (credentials.Kind == PairingKind.Legacy && !source.Options.FitsLegacyReceiver)
+            throw new ArgumentException("Este Apple TV admite hasta 1080p: elige 720p o 1080p");
+
         // Primero la captura: en Wayland el escritorio puede pedir permiso, y la TV no debe esperar.
         await source.OpenAsync(ct);
 

@@ -15,6 +15,18 @@ public class VideoOptionsTests
     public void BitrateScalesWithLimits(string resolution, int fps, double expected) =>
         Assert.Equal(expected, VideoOptions.Create(resolution, fps).MaxBitrate);
 
+    [Theory]
+    [InlineData("720p", true)]
+    [InlineData("1080p", true)]
+    [InlineData("1440p", false)]
+    [InlineData("2160p", false)]
+    [InlineData("native", false)]
+    public void KnowsWhatLegacyReceiversDecode(string resolution, bool fits)
+    {
+        Assert.Equal(fits, VideoOptions.Create(resolution).FitsLegacyReceiver);
+        Assert.Equal(fits, VideoOptions.LegacyResolutions.Contains(resolution));
+    }
+
     [Fact]
     public void RejectsUnknownValues()
     {

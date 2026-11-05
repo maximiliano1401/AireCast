@@ -39,6 +39,10 @@ public partial class MainWindow : Window
         ["native"] = "Nativa",
     };
 
+    private const string AllResolutionsHint =
+        "«Nativa» usa la de esta pantalla, sin escalar: es la más nítida. Por encima de 1080p (también la nativa si tu pantalla es mayor) hace falta un receptor que lo admita, como el Apple TV 4K.";
+    private const string LegacyResolutionsHint = "Este Apple TV admite hasta 1080p.";
+
     private readonly CancellationTokenSource _closing = new();
     private AirPlayPairing? _pairing;
     private CancellationTokenSource? _mirror;
@@ -61,10 +65,29 @@ public partial class MainWindow : Window
     {
         _loadingSettings = true;
         AppSettings settings = AppSettings.Load();
-        ResolutionBox.ItemsSource = ResolutionNames.Values.ToList();
-        ResolutionBox.SelectedItem = ResolutionNames[settings.Resolution];
+        ShowResolutions(ResolutionNames.Keys, settings.Resolution, AllResolutionsHint);
         FpsBox.ItemsSource = VideoOptions.FpsChoices.ToList();
         FpsBox.SelectedItem = settings.Fps;
+        _loadingSettings = false;
+    }
+
+    private void ShowResolutions(IEnumerable<string> resolutions, string selected, string hint)
+    {
+        var choices = resolutions.ToList();
+        ResolutionBox.ItemsSource = choices.Select(resolution => ResolutionNames[resolution]).ToList();
+        ResolutionBox.SelectedItem = ResolutionNames[choices.Contains(selected) ? selected : "1080p"];
+        ResolutionHint.Text = hint;
+    }
+
+    /// <summary>Solo ofrece lo que admite el receptor elegido; la elección guardada se conserva para los demás.</summary>
+    private void UpdateResolutions(DeviceRow? row)
+    {
+        _loadingSettings = true;
+        string saved = AppSettings.Load().Resolution;
+        if (row is { Device.UsesHomeKit: false })
+            ShowResolutions(VideoOptions.LegacyResolutions, saved, LegacyResolutionsHint);
+        else
+            ShowResolutions(ResolutionNames.Keys, saved, AllResolutionsHint);
         _loadingSettings = false;
     }
 
@@ -129,6 +152,7 @@ public partial class MainWindow : Window
         DeviceRow? row = Selected;
         TargetText.Text = row is null ? "Elige un dispositivo" : row.Ready ? row.Name : $"{row.Name} · sin emparejar";
         ShareButton.IsEnabled = row is { Ready: true } && !Mirroring;
+        UpdateResolutions(row);
         ClosePairing();
         if (row is { Device.NeedsPairing: true, Paired: false })
             await BeginPairingAsync(row);

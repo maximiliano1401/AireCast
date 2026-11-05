@@ -46,6 +46,13 @@ public sealed class MirrorSession : IVideoSink, IAsyncDisposable
     private const int LegacyVideoLatencyMs = 65;
     private const int LegacyAudioLeadMs = 10; // el audio va por delante del vídeo, como doubletake
 
+    /// <summary>
+    /// Los Apple TV antiguos no informan del tamaño de su pantalla y presentan la imagen sin escalar: a
+    /// 720p, un vídeo de 1080p se sale por la derecha y por arriba. Se les pide ajustarla a este tamaño.
+    /// </summary>
+    private const int LegacyDisplayWidth = 1280;
+    private const int LegacyDisplayHeight = 720;
+
     private static readonly string[] TimestampNames = ["SubSu", "BePxT", "AfPxT", "BefEn", "EmEnc"];
     private static readonly TimeSpan FeedbackInterval = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(1);
@@ -298,6 +305,13 @@ public sealed class MirrorSession : IVideoSink, IAsyncDisposable
             await _client.SetFullVolumeAsync(ct);
     }
 
+    /// <summary>El tamaño de la imagen ajustado a una pantalla, sin deformarla; si ya cabe, el mismo.</summary>
+    public static (int Width, int Height) FitDisplay(int width, int height, int maxWidth, int maxHeight)
+    {
+        double scale = Math.Min(1, Math.Min((double)maxWidth / width, (double)maxHeight / height));
+        return ((int)Math.Round(width * scale), (int)Math.Round(height * scale));
+    }
+
     /// <summary>Clave e IV de AES-CTR del vídeo legacy: SHA-512("AirPlayStream{Key,IV}&lt;id&gt;" + clave)[:16].</summary>
     public static (byte[] Key, byte[] Iv) DeriveLegacyVideoKeys(byte[] key, long streamId)
     {
@@ -339,7 +353,8 @@ public sealed class MirrorSession : IVideoSink, IAsyncDisposable
     public async Task SendCodecAsync(byte[] sps, byte[] pps, CancellationToken ct)
     {
         var (width, height) = H264.SpsSize(sps);
-        await WritePacketAsync(VideoPackets.Codec(H264.BuildAvcc(sps, pps), width, height, NtpClock.FrameTime()), ct);
+        (int, int)? display = _legacyCipher is null ? null : FitDisplay(width, height, LegacyDisplayWidth, LegacyDisplayHeight);
+        await WritePacketAsync(VideoPackets.Codec(H264.BuildAvcc(sps, pps), width, height, NtpClock.FrameTime(), display), ct);
     }
 
     public async Task SendFrameAsync(IReadOnlyList<byte[]> nals, CancellationToken ct)

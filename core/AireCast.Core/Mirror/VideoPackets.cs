@@ -27,11 +27,15 @@ public static class VideoPackets
 
     public static byte[] VideoHeader(int size, ulong time) => Header(size, TypeVideo, 0, 0, time);
 
-    /// <summary>Paquete de configuración del códec (avcC en claro), con el tamaño de la imagen.</summary>
-    public static byte[] Codec(byte[] avcc, int width, int height, ulong time)
+    /// <summary>
+    /// Paquete de configuración del códec (avcC en claro), con el tamaño de la imagen y el tamaño al
+    /// que debe presentarla la TV (los últimos dos valores).
+    /// </summary>
+    public static byte[] Codec(byte[] avcc, int width, int height, ulong time, (int Width, int Height)? display = null)
     {
         byte[] header = Header(avcc.Length, TypeCodec, 0, CodecOption, time);
-        Span<float> dimensions = [width, height, 0, 0, 0, 0, width, height, 0, 0, width, height];
+        var (displayWidth, displayHeight) = display ?? (width, height);
+        Span<float> dimensions = [width, height, 0, 0, 0, 0, width, height, 0, 0, displayWidth, displayHeight];
         for (int i = 0; i < dimensions.Length; i++)
             BinaryPrimitives.WriteSingleLittleEndian(header.AsSpan(16 + i * 4), dimensions[i]);
         return [.. header, .. avcc];

@@ -36,6 +36,10 @@ AireCast.Cli mirror <nombre, id o dirección> [--resolution 1080p] [--fps 30] [-
 
 Usa los mismos archivos que la versión Python (`credentials.json` y `screencast-token`), así que los emparejamientos existentes siguen valiendo.
 
+## Resolución
+
+Los Apple TV antiguos admiten hasta 1080p: la app solo les ofrece 720p y 1080p. Además no informan del tamaño de su pantalla y presentan la imagen sin escalar, así que se les pide ajustarla a 1280x720 (ver `LegacyDisplayWidth`); con la TV a 1080p la imagen podría verse más pequeña, sin haberlo comprobado.
+
 ## Pendiente respecto a la versión Python
 
 - Enviar vídeo y audio a la TV (nunca funcionaron con el Apple TV 3).
