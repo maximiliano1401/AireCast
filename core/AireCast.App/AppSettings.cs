@@ -7,10 +7,10 @@ using AireCast.Core.Mirror;
 
 namespace AireCast.App;
 
-/// <summary>La resolución y los fps elegidos, que se recuerdan en este equipo.</summary>
-internal sealed record AppSettings(string Resolution, int Fps)
+/// <summary>La resolución, los fps y el tipo de red elegidos, que se recuerdan en este equipo.</summary>
+internal sealed record AppSettings(string Resolution, int Fps, string Network)
 {
-    private static readonly AppSettings Default = new("1080p", 30);
+    private static readonly AppSettings Default = new("1080p", 30, NetworkProfile.Normal.Name);
 
     private static string FilePath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AireCast", "settings.json");
@@ -22,8 +22,11 @@ internal sealed record AppSettings(string Resolution, int Fps)
             using JsonDocument json = JsonDocument.Parse(File.ReadAllText(FilePath));
             string resolution = json.RootElement.GetProperty("resolution").GetString() ?? Default.Resolution;
             int fps = json.RootElement.GetProperty("fps").GetInt32();
+            // Los ajustes guardados por versiones anteriores no tienen «network»: se conservan los demás.
+            string network = json.RootElement.TryGetProperty("network", out JsonElement saved) && saved.GetString() is { } name
+                && NetworkProfile.Choices.Any(profile => profile.Name == name) ? name : Default.Network;
             bool valid = VideoOptions.Resolutions.ContainsKey(resolution) && VideoOptions.FpsChoices.Contains(fps);
-            return valid ? new AppSettings(resolution, fps) : Default;
+            return valid ? new AppSettings(resolution, fps, network) : Default;
         }
         catch (Exception ex) when (ex is IOException or JsonException or InvalidOperationException or System.Collections.Generic.KeyNotFoundException)
         {
@@ -41,6 +44,7 @@ internal sealed record AppSettings(string Resolution, int Fps)
             writer.WriteStartObject();
             writer.WriteString("resolution", Resolution);
             writer.WriteNumber("fps", Fps);
+            writer.WriteString("network", Network);
             writer.WriteEndObject();
         }
         catch (IOException)

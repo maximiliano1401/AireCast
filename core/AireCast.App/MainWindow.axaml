@@ -75,6 +75,11 @@
               <ComboBox x:Name="FpsBox" Grid.Column="1" MinWidth="150" SelectionChanged="OnSettingChanged" />
             </Grid>
             <TextBlock x:Name="ResolutionHint" Classes="meta" TextWrapping="Wrap" />
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="Red" Classes="label" />
+              <ComboBox x:Name="NetworkBox" Grid.Column="1" MinWidth="150" SelectionChanged="OnSettingChanged" />
+            </Grid>
+            <TextBlock x:Name="NetworkHint" Classes="meta" TextWrapping="Wrap" />
             <Button x:Name="ShareButton" Classes="primary" Content="Compartir pantalla" HorizontalAlignment="Stretch"
                     HorizontalContentAlignment="Center" IsEnabled="False" Click="OnShare" />
           </StackPanel>

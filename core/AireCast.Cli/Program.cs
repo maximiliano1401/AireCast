@@ -36,7 +36,7 @@ static int Usage()
     Console.Error.WriteLine("     airecast verify <nombre, id o dirección>");
     Console.Error.WriteLine("     airecast pair <nombre, id o dirección>");
     Console.Error.WriteLine("     airecast capture [--seconds 5] [--resolution 1080p] [--fps 30] [--source screen|test] [--ffmpeg ruta]");
-    Console.Error.WriteLine("     airecast mirror <nombre, id o dirección> [--resolution 1080p] [--fps 30] [--source screen|test] [--ffmpeg ruta] [--no-audio]");
+    Console.Error.WriteLine("     airecast mirror <nombre, id o dirección> [--resolution 1080p] [--fps 30] [--source screen|test] [--ffmpeg ruta] [--no-audio] [--network normal|unstable]");
     return 2;
 }
 
@@ -115,6 +115,7 @@ static async Task<int> Capture(string[] args)
 
 static async Task<int> Mirror(string target, string[] args)
 {
+    NetworkProfile network = NetworkProfile.Parse(Option(args, "--network", NetworkProfile.Normal.Name));
     await using IScreenSource source = Source(args);
     if (await Find(target) is not { } device)
         return 1;
@@ -133,7 +134,7 @@ static async Task<int> Mirror(string target, string[] args)
     };
     var callbacks = new MirrorCallbacks { AskCode = AskCode, Log = Console.WriteLine };
     long frames = await MirrorController.RunAsync(device, credentials, source, Option(args, "--ffmpeg", MirrorController.FindFfmpeg()),
-        callbacks, !args.Contains("--no-audio"), stop.Token);
+        callbacks, !args.Contains("--no-audio"), network, stop.Token);
     Console.WriteLine($"Terminado: {frames} fotogramas");
     return 0;
 }

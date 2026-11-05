@@ -39,6 +39,16 @@ public partial class MainWindow : Window
         ["native"] = "Nativa",
     };
 
+    private static readonly Dictionary<string, string> NetworkNames = new()
+    {
+        ["normal"] = "Buena",
+        ["unstable"] = "Inestable",
+    };
+
+    private static readonly string UnstableNetworkHint =
+        $"Si el sonido se entrecorta (Wi-Fi saturado o en 2,4 GHz), prueba «Inestable»: da {NetworkProfile.UnstableAudioMarginMs} ms de margen al audio y retrasa el vídeo lo mismo, para que sigan sincronizados. Con «Buena» no cambia nada.";
+    private const string LegacyNetworkHint = "No cambia nada en este Apple TV: ya lleva su propio ajuste.";
+
     private const string AllResolutionsHint =
         "«Nativa» usa la de esta pantalla, sin escalar: es la más nítida. Por encima de 1080p (también la nativa si tu pantalla es mayor) hace falta un receptor que lo admita, como el Apple TV 4K.";
     private const string LegacyResolutionsHint = "Este Apple TV admite hasta 1080p.";
@@ -68,7 +78,18 @@ public partial class MainWindow : Window
         ShowResolutions(ResolutionNames.Keys, settings.Resolution, AllResolutionsHint);
         FpsBox.ItemsSource = VideoOptions.FpsChoices.ToList();
         FpsBox.SelectedItem = settings.Fps;
+        NetworkBox.ItemsSource = NetworkProfile.Choices.Select(profile => NetworkNames[profile.Name]).ToList();
+        NetworkBox.SelectedItem = NetworkNames[settings.Network];
+        UpdateNetwork(null);
         _loadingSettings = false;
+    }
+
+    /// <summary>La opción de red solo cambia algo con receptores HomeKit; con un Apple TV antiguo se desactiva.</summary>
+    private void UpdateNetwork(DeviceRow? row)
+    {
+        bool legacy = row is { Device.UsesHomeKit: false };
+        NetworkBox.IsEnabled = !legacy;
+        NetworkHint.Text = legacy ? LegacyNetworkHint : UnstableNetworkHint;
     }
 
     private void ShowResolutions(IEnumerable<string> resolutions, string selected, string hint)
@@ -95,11 +116,13 @@ public partial class MainWindow : Window
 
     private int SelectedFps => (int)FpsBox.SelectedItem!;
 
+    private string SelectedNetwork => NetworkNames.First(entry => entry.Value == (string?)NetworkBox.SelectedItem).Key;
+
     private void OnSettingChanged(object? sender, SelectionChangedEventArgs e)
     {
-        if (_loadingSettings || ResolutionBox.SelectedItem is null || FpsBox.SelectedItem is null)
+        if (_loadingSettings || ResolutionBox.SelectedItem is null || FpsBox.SelectedItem is null || NetworkBox.SelectedItem is null)
             return;
-        new AppSettings(SelectedResolution, SelectedFps).Save();
+        new AppSettings(SelectedResolution, SelectedFps, SelectedNetwork).Save();
         if (Mirroring)
             SetStatus("Los cambios se aplicarán la próxima vez que compartas la pantalla.");
     }
@@ -153,6 +176,7 @@ public partial class MainWindow : Window
         TargetText.Text = row is null ? "Elige un dispositivo" : row.Ready ? row.Name : $"{row.Name} · sin emparejar";
         ShareButton.IsEnabled = row is { Ready: true } && !Mirroring;
         UpdateResolutions(row);
+        UpdateNetwork(row);
         ClosePairing();
         if (row is { Device.NeedsPairing: true, Paired: false })
             await BeginPairingAsync(row);
@@ -274,15 +298,16 @@ public partial class MainWindow : Window
         }
 
         VideoOptions options = VideoOptions.Create(SelectedResolution, SelectedFps);
+        NetworkProfile network = row.Device.UsesHomeKit ? NetworkProfile.Parse(SelectedNetwork) : NetworkProfile.Normal;
         ShareButton.IsEnabled = false;
         NowPlaying.IsVisible = true;
         NowPlayingTarget.Text = $"en «{row.Name}»";
         SetStatus($"Compartiendo la pantalla en «{row.Name}»…");
         _mirror = new CancellationTokenSource();
-        _mirrorTask = RunMirrorAsync(row, credentials, options, _mirror);
+        _mirrorTask = RunMirrorAsync(row, credentials, options, network, _mirror);
     }
 
-    private async Task RunMirrorAsync(DeviceRow row, Credentials credentials, VideoOptions options, CancellationTokenSource stop)
+    private async Task RunMirrorAsync(DeviceRow row, Credentials credentials, VideoOptions options, NetworkProfile network, CancellationTokenSource stop)
     {
         string result;
         try
@@ -296,7 +321,7 @@ public partial class MainWindow : Window
             await Task.Run(async () =>
             {
                 await using IScreenSource source = ScreenCapture.Create(options);
-                await MirrorController.RunAsync(row.Device, credentials, source, MirrorController.FindFfmpeg(), callbacks, ct: stop.Token);
+                await MirrorController.RunAsync(row.Device, credentials, source, MirrorController.FindFfmpeg(), callbacks, network: network, ct: stop.Token);
             });
             result = "La transmisión ha terminado.";
         }

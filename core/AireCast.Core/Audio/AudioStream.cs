@@ -26,6 +26,7 @@ public sealed class AudioStream : IDisposable
     private readonly CancellationTokenSource _stop = new();
     private Thread? _sender;
     private Task? _receiver;
+    private TimerResolution? _timer;
     private ushort _sequence = (ushort)Random.Shared.Next(ushort.MaxValue);
 
     public AudioStream(Socket control, IPEndPoint data, IPEndPoint? remoteControl, IAudioPacketizer packetizer, PcmBuffer pcm, int latency)
@@ -41,8 +42,12 @@ public sealed class AudioStream : IDisposable
 
     public int ResentPackets { get; private set; }
 
+    /// <summary>El margen con el que sale el audio: lo que la TV guarda antes de reproducirlo.</summary>
+    public TimeSpan Latency => TimeSpan.FromSeconds((double)_latency / AudioFormat.Rate);
+
     public void Start()
     {
+        _timer = TimerResolution.Begin(); // sin esto, el envío despierta cada ~15 ms y los paquetes salen de dos en dos
         _receiver = Task.Run(ReceiveControlAsync);
         _sender = new Thread(SendLoop) { IsBackground = true, Priority = ThreadPriority.AboveNormal, Name = "AireCast-Audio" };
         _sender.Start();
@@ -136,6 +141,7 @@ public sealed class AudioStream : IDisposable
     {
         _stop.Cancel();
         _sender?.Join(TimeSpan.FromSeconds(1));
+        _timer?.Dispose();
         _data.Dispose();
         _control.Dispose();
         try

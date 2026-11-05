@@ -27,6 +27,8 @@ public sealed class FakeReceiver : IAsyncDisposable
     private readonly TcpListener _control = new(IPAddress.Loopback, 0);
     private readonly TcpListener _events = new(IPAddress.Loopback, 0);
     private readonly TcpListener _data = new(IPAddress.Loopback, 0);
+    private readonly UdpClient _audioData = new(new IPEndPoint(IPAddress.Loopback, 0));
+    private readonly UdpClient _audioControl = new(new IPEndPoint(IPAddress.Loopback, 0));
     private readonly CancellationTokenSource _stop = new();
     private readonly List<Task> _tasks = [];
     private byte[] _shared = [];
@@ -39,6 +41,13 @@ public sealed class FakeReceiver : IAsyncDisposable
     public ConcurrentQueue<string> Requests { get; } = new();
     public Dictionary<string, object?>? SessionSetup { get; private set; }
     public Dictionary<string, object?>? VideoStream { get; private set; }
+
+    /// <summary>El flujo de audio que pidió el emisor (con su margen, latencyMin y latencyMax), si pidió alguno.</summary>
+    public Dictionary<string, object?>? AudioStream { get; private set; }
+
+    /// <summary>La marca de tiempo de cada fotograma, tal como llegó en su cabecera.</summary>
+    public ConcurrentQueue<ulong> FrameTimes { get; } = new();
+
     public bool TimingAnswered { get; private set; }
     public string? EventReply { get; private set; }
     public (int Width, int Height)? CodecSize { get; private set; }
@@ -101,7 +110,19 @@ public sealed class FakeReceiver : IAsyncDisposable
                 await QueryTimeAsync((int)(long)plist["timingPort"]!);
                 return (Plist(cseq, new() { ["eventPort"] = (long)((IPEndPoint)_events.LocalEndpoint).Port }), false);
             }
-            VideoStream = (Dictionary<string, object?>)((List<object?>)plist["streams"]!)[0]!;
+            var requested = (Dictionary<string, object?>)((List<object?>)plist["streams"]!)[0]!;
+            if ((long)requested["type"]! == 96)
+            {
+                AudioStream = requested;
+                var audio = new Dictionary<string, object?>
+                {
+                    ["type"] = 96L,
+                    ["dataPort"] = (long)((IPEndPoint)_audioData.Client.LocalEndPoint!).Port,
+                    ["controlPort"] = (long)((IPEndPoint)_audioControl.Client.LocalEndPoint!).Port,
+                };
+                return (Plist(cseq, new() { ["streams"] = new List<object?> { audio } }), false);
+            }
+            VideoStream = requested;
             _streamId = (long)VideoStream["streamConnectionID"]!;
             var stream = new Dictionary<string, object?> { ["type"] = 110L, ["dataPort"] = (long)((IPEndPoint)_data.LocalEndpoint).Port };
             return (Plist(cseq, new() { ["streams"] = new List<object?> { stream } }), false);
@@ -174,7 +195,10 @@ public sealed class FakeReceiver : IAsyncDisposable
                 if (header[4] == 1)
                     CodecSize = ((int)BinaryPrimitives.ReadSingleLittleEndian(header.AsSpan(16)), (int)BinaryPrimitives.ReadSingleLittleEndian(header.AsSpan(20)));
                 else
+                {
+                    FrameTimes.Enqueue(BinaryPrimitives.ReadUInt64LittleEndian(header.AsSpan(8)));
                     Frames.Enqueue(PairCrypto.Open(key, PairCrypto.CounterNonce(counter++), payload, header));
+                }
             }
         }
         catch (Exception ex) when (ex is OperationCanceledException or IOException or EndOfStreamException)
@@ -219,6 +243,8 @@ public sealed class FakeReceiver : IAsyncDisposable
         _events.Stop();
         _data.Stop();
         await Task.WhenAll(_tasks.Select(t => t.ContinueWith(_ => { }, TaskScheduler.Default)));
+        _audioData.Dispose();
+        _audioControl.Dispose();
         _stop.Dispose();
     }
 }

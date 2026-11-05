@@ -73,11 +73,14 @@ public sealed class MirrorSession : IVideoSink, IAsyncDisposable
     private AesCtr? _legacyCipher;
     private AudioStream? _audio;
     private bool _frameSent;
+    private readonly NetworkProfile _network;
+    private TimeSpan _videoDelay;
 
-    private MirrorSession(AirPlayClient client, PcmBuffer? pcm)
+    private MirrorSession(AirPlayClient client, PcmBuffer? pcm, NetworkProfile network)
     {
         _client = client;
         _pcm = pcm;
+        _network = network;
         _timing = new TimingServer(client.Connection.LocalAddress);
     }
 
@@ -89,13 +92,22 @@ public sealed class MirrorSession : IVideoSink, IAsyncDisposable
     /// <summary>Si la TV aceptó el flujo de audio.</summary>
     public bool HasAudio => _audio is not null;
 
+    /// <summary>El margen con el que sale el audio, o null si no hay audio.</summary>
+    public TimeSpan? AudioLatency => _audio?.Latency;
+
+    /// <summary>Cuánto se retrasa el vídeo para seguir sincronizado con el audio (cero con la red normal).</summary>
+    public TimeSpan VideoDelay => _videoDelay;
+
     /// <summary>
     /// Abre la sesión sobre una conexión con pair-verify ya hecho. Con <paramref name="pcm"/> también
-    /// envía audio; si la TV no lo acepta, sigue solo con vídeo.
+    /// envía audio; si la TV no lo acepta, sigue solo con vídeo. Con <paramref name="network"/> en
+    /// «inestable», el audio sale con más margen y el vídeo se retrasa lo mismo (solo en receptores con
+    /// HomeKit: los Apple TV antiguos ya llevan su propio ajuste).
     /// </summary>
-    public static async Task<MirrorSession> StartAsync(AirPlayClient client, PcmBuffer? pcm = null, string name = "AireCast", CancellationToken ct = default)
+    public static async Task<MirrorSession> StartAsync(AirPlayClient client, PcmBuffer? pcm = null, string name = "AireCast",
+        NetworkProfile? network = null, CancellationToken ct = default)
     {
-        var session = new MirrorSession(client, pcm);
+        var session = new MirrorSession(client, pcm, network ?? NetworkProfile.Normal);
         try
         {
             if (client.HomeKit is { } verify)
@@ -186,7 +198,7 @@ public sealed class MirrorSession : IVideoSink, IAsyncDisposable
                         ["isMedia"] = true,
                         ["usingScreen"] = true,
                         ["latencyMin"] = (long)AudioFormat.DefaultLatency,
-                        ["latencyMax"] = (long)AudioFormat.MaxLatency,
+                        ["latencyMax"] = (long)Math.Max(AudioFormat.MaxLatency, _network.AudioLatency(AudioFormat.DefaultLatency)),
                         ["supportsDynamicStreamID"] = false,
                         ["streamConnectionID"] = (long)ssrc,
                     },
@@ -197,9 +209,14 @@ public sealed class MirrorSession : IVideoSink, IAsyncDisposable
 
             // Si la TV declara cuánto tarda en reproducir lo que le llega (Apple TV 4K: 27 ms), con solo
             // el margen por defecto casi todo llega tarde y suena robótico.
-            int latency = stream.GetValueOrDefault("arrivalToRenderLatencyMs") is long arrival
+            int normalLatency = stream.GetValueOrDefault("arrivalToRenderLatencyMs") is long arrival
                 ? Math.Min(AudioFormat.Rate * ((int)arrival + AudioFormat.NetworkMarginMs) / 1000, AudioFormat.MaxLatency)
                 : AudioFormat.DefaultLatency;
+
+            // Red inestable: más margen para el audio y el vídeo, que lleva la misma marca de tiempo más
+            // tarde, retrasado lo mismo. Con la red normal el margen no cambia y el retraso es cero.
+            int latency = _network.AudioLatency(normalLatency);
+            _videoDelay = _network.VideoDelay(normalLatency);
             _audio = NewAudioStream(control, dataPort, stream, new ModernAudioPacketizer(key, ssrc), latency);
         }
         catch (IOException)
@@ -354,7 +371,7 @@ public sealed class MirrorSession : IVideoSink, IAsyncDisposable
     {
         var (width, height) = H264.SpsSize(sps);
         (int, int)? display = _legacyCipher is null ? null : FitDisplay(width, height, LegacyDisplayWidth, LegacyDisplayHeight);
-        await WritePacketAsync(VideoPackets.Codec(H264.BuildAvcc(sps, pps), width, height, NtpClock.FrameTime(), display), ct);
+        await WritePacketAsync(VideoPackets.Codec(H264.BuildAvcc(sps, pps), width, height, NtpClock.FrameTime(_videoDelay), display), ct);
     }
 
     public async Task SendFrameAsync(IReadOnlyList<byte[]> nals, CancellationToken ct)
@@ -369,7 +386,7 @@ public sealed class MirrorSession : IVideoSink, IAsyncDisposable
         }
         else
         {
-            byte[] header = VideoPackets.VideoHeader(payload.Length + TagLength, NtpClock.FrameTime());
+            byte[] header = VideoPackets.VideoHeader(payload.Length + TagLength, NtpClock.FrameTime(_videoDelay));
             packet = [.. header, .. PairCrypto.Seal(_dataKey, PairCrypto.CounterNonce(_frameCounter++), payload, header)];
         }
         await WritePacketAsync(packet, ct);

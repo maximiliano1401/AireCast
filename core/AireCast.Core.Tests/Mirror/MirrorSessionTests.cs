@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 using System.Net;
+using AireCast.Core.Audio;
 using AireCast.Core.Mirror;
 using AireCast.Core.Net;
 using AireCast.Core.Pairing;
@@ -52,6 +53,76 @@ public class MirrorSessionTests
         Assert.Equal(2, receiver.Requests.Count(r => r.StartsWith("SETUP", StringComparison.Ordinal)));
         Assert.Contains(receiver.Requests, r => r.StartsWith("RECORD", StringComparison.Ordinal));
         Assert.Equal(2, receiver.Requests.Count(r => r.StartsWith("TEARDOWN", StringComparison.Ordinal)));
+    }
+
+    /// <summary>Milisegundos entre dos marcas de tiempo 32.32 de un fotograma.</summary>
+    private static double Milliseconds(ulong later, ulong earlier) => (double)(later - earlier) / (1UL << 32) * 1000;
+
+    [Fact]
+    public async Task NormalNetworkKeepsTheUsualAudioMarginAndDoesNotDelayTheVideo()
+    {
+        await using var receiver = new FakeReceiver();
+        receiver.Start();
+        var (connection, client) = await ConnectAsync(receiver);
+        ulong sentAt;
+        using (connection)
+        {
+            await using MirrorSession session = await MirrorSession.StartAsync(client, new PcmBuffer());
+            Assert.Equal(TimeSpan.Zero, session.VideoDelay);
+            Assert.Equal(25, session.AudioLatency!.Value.TotalMilliseconds, precision: 0);
+
+            await session.SendCodecAsync(Bytes(Sps), Bytes(Pps), default);
+            sentAt = NtpClock.FrameTime();
+            await session.SendFrameAsync([[0x65, 1, 2, 3]], default);
+            await WaitUntil(() => receiver.FrameTimes.Count == 1);
+        }
+
+        // Lo que se anunció es lo de siempre: entre 25 y 100 ms (las mismas constantes de antes).
+        Assert.Equal((long)AudioFormat.DefaultLatency, receiver.AudioStream!["latencyMin"]);
+        Assert.Equal((long)AudioFormat.MaxLatency, receiver.AudioStream["latencyMax"]);
+        Assert.InRange(Milliseconds(receiver.FrameTimes.First(), sentAt), 0, 60);
+    }
+
+    [Fact]
+    public async Task UnstableNetworkGivesTheAudioMoreMarginAndDelaysTheVideoTheSame()
+    {
+        await using var receiver = new FakeReceiver();
+        receiver.Start();
+        var (connection, client) = await ConnectAsync(receiver);
+        ulong sentAt;
+        using (connection)
+        {
+            await using MirrorSession session = await MirrorSession.StartAsync(client, new PcmBuffer(), network: NetworkProfile.Unstable);
+            Assert.Equal(150, session.AudioLatency!.Value.TotalMilliseconds, precision: 0);
+            Assert.Equal(125, session.VideoDelay.TotalMilliseconds, precision: 0); // 150 - los 25 ms de siempre
+
+            await session.SendCodecAsync(Bytes(Sps), Bytes(Pps), default);
+            sentAt = NtpClock.FrameTime();
+            await session.SendFrameAsync([[0x65, 1, 2, 3]], default);
+            await WaitUntil(() => receiver.FrameTimes.Count == 1);
+        }
+
+        // La TV recibe el margen mayor anunciado: la latencia elegida cabe en latencyMax (150 ms).
+        Assert.Equal((long)AudioFormat.DefaultLatency, receiver.AudioStream!["latencyMin"]);
+        Assert.Equal(6615L, receiver.AudioStream["latencyMax"]); // 44100 Hz x 150 ms
+        // Y el fotograma lleva una hora ~125 ms posterior a la de enviarlo.
+        Assert.InRange(Milliseconds(receiver.FrameTimes.First(), sentAt), 125, 185);
+    }
+
+    [Fact]
+    public async Task UnstableNetworkWithoutAudioHasNothingToDelay()
+    {
+        await using var receiver = new FakeReceiver();
+        receiver.Start();
+        var (connection, client) = await ConnectAsync(receiver);
+        using (connection)
+        {
+            await using MirrorSession session = await MirrorSession.StartAsync(client, network: NetworkProfile.Unstable);
+
+            Assert.False(session.HasAudio);
+            Assert.Null(session.AudioLatency);
+            Assert.Equal(TimeSpan.Zero, session.VideoDelay); // sin audio no hay con qué sincronizar
+        }
     }
 
     [Fact]

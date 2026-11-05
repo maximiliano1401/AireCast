@@ -17,6 +17,9 @@ public static class NtpClock
     /// </summary>
     public static ulong FrameTime() => Now() - (EpochSeconds << 32);
 
+    /// <summary>La marca de un fotograma que se quiere mostrar <paramref name="delay"/> más tarde (nunca antes).</summary>
+    public static ulong FrameTime(TimeSpan delay) => FrameTime() + FromUnixTicks(Math.Max(0, delay.Ticks));
+
     private static ulong FromUnixTicks(long ticks)
     {
         ulong seconds = (ulong)(ticks / TimeSpan.TicksPerSecond);
