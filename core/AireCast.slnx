@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="AireCast.Cli/AireCast.Cli.csproj" />
+  <Project Path="AireCast.Core.Tests/AireCast.Core.Tests.csproj" />
+  <Project Path="AireCast.Core/AireCast.Core.csproj" />
+</Solution>

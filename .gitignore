@@ -10,6 +10,9 @@ __pycache__/
 # --- Artefactos de build (se regeneran) ---
 # npm run build:bridge  -> build/bridge, build/ffmpeg, build/pyinstaller
 build/
+# dotnet build (core/)
+bin/
+obj/
 # npm run dist (electron-builder)
 release/
 dist/
