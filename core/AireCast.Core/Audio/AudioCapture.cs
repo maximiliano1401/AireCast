@@ -26,7 +26,7 @@ public sealed class AudioCapture : IAsyncDisposable
     /// Inicia la captura: en Linux este mismo ejecutable con --audiocap, en Windows audiocap.exe.
     /// Devuelve null si este sistema no tiene captura de audio; el duplicado sigue con silencio.
     /// </summary>
-    /// <exception cref="IOException">La captura no pudo iniciarse.</exception>
+    /// <exception cref="IOException">La captura no pudo iniciarse (en Windows, también si falta audiocap.exe).</exception>
     public static async Task<AudioCapture?> StartAsync(PcmBuffer pcm, bool muteLocal, CancellationToken ct = default)
     {
         if (Command(muteLocal) is not { } info)
@@ -59,9 +59,10 @@ public sealed class AudioCapture : IAsyncDisposable
         ProcessStartInfo info;
         if (OperatingSystem.IsWindows())
         {
+            // Sin él no hay captura: lo decimos en voz alta en vez de mandar silencio a la TV sin avisar.
             string exe = Path.Combine(AppContext.BaseDirectory, "audiocap.exe");
             if (!File.Exists(exe))
-                return null;
+                throw new IOException($"No se encontró audiocap.exe junto a la aplicación ({AppContext.BaseDirectory}); compílalo con «npm run build:audiocap»");
             info = new ProcessStartInfo(exe);
         }
         else if (OperatingSystem.IsLinux() && Environment.ProcessPath is { } self)

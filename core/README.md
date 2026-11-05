@@ -32,7 +32,7 @@ AireCast.Cli mirror <nombre, id o dirección> [--resolution 1080p] [--fps 30] [-
 
 - **FFmpeg** con libx264: junto al ejecutable o en el PATH (en Windows también vale `winget install Gyan.FFmpeg`).
 - **Linux**: `pactl` y `parec`, y en Wayland `xdg-desktop-portal` y GStreamer con `pipewiresrc`, como la versión Python. En X11, `xrandr`.
-- **Windows**: `audiocap.exe` junto al ejecutable para el audio (`npm run build:audiocap` lo deja en `build/audiocap/`); sin él, la TV recibe silencio.
+- **Windows**: `audiocap.exe` junto al ejecutable para el audio. El build lo compila si falta (`audiocap.cs`, con el `csc.exe` que trae Windows) y lo copia al ejecutar y al publicar; también puedes compilarlo a mano con `npm run build:audiocap` (lo deja en `build/audiocap/`). Si no está, el duplicado avisa en el registro y la TV no recibe audio. Solo se compila en un Windows: un `publish.sh` desde Linux no lo incluye.
 
 Usa los mismos archivos que la versión Python (`credentials.json` y `screencast-token`), así que los emparejamientos existentes siguen valiendo.
 

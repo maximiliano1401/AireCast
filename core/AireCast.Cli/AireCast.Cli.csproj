@@ -11,4 +11,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- audiocap.exe, la captura de audio de Windows, junto al ejecutable. -->
+  <Import Project="..\AudioCap.targets" />
+
 </Project>

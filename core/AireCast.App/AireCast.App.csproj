@@ -18,4 +18,7 @@
   <ItemGroup>
     <ProjectReference Include="..\AireCast.Core\AireCast.Core.csproj" />
   </ItemGroup>
+
+  <!-- audiocap.exe, la captura de audio de Windows, junto al ejecutable. -->
+  <Import Project="..\AudioCap.targets" />
 </Project>
