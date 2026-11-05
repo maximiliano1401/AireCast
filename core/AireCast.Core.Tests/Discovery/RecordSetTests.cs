@@ -54,6 +54,19 @@ public class RecordSetTests
         Assert.Equal(["C28263C67CDB2E63", "AA:BB"], device.Identifiers);
     }
 
+    [Theory] // Las features reales de los receptores probados.
+    [InlineData("0x4A7FDFD5,0x3C177FDE", true)] // Apple TV 4K
+    [InlineData("0x7F8AD0,0x38BCF46", true)] // Roku
+    [InlineData("0x5A7FFFF7,0x1E", false)] // Apple TV 3
+    public void DetectsHomeKitFromFeatures(string features, bool homeKit)
+    {
+        var records = new RecordSet();
+        records.Add(Service(AirPlay, "Sala", "tv.local", 7000, Txt(("deviceid", "AA"), ("features", features))));
+        records.Add([new AddressRecord("tv.local", IPAddress.Parse("10.0.0.5"))]);
+
+        Assert.Equal(homeKit, Assert.Single(Devices(records)).UsesHomeKit);
+    }
+
     [Fact]
     public void HomePodHasNoVideo()
     {

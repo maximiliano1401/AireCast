@@ -5,30 +5,64 @@ using System.Text.RegularExpressions;
 
 namespace AireCast.Core.Mirror;
 
-/// <summary>De dónde lee FFmpeg la imagen en cada sistema.</summary>
+/// <summary>De dónde sale la imagen y cómo se lanza el codificador.</summary>
+public interface IScreenSource : IAsyncDisposable
+{
+    /// <summary>Resolución y fps definitivos; en nativa, algunas fuentes solo los conocen al abrirse.</summary>
+    VideoOptions Options { get; }
+
+    /// <summary>Prepara la captura: en Wayland el escritorio puede pedir permiso.</summary>
+    Task OpenAsync(CancellationToken ct);
+
+    ProcessStartInfo Encoder(string ffmpeg);
+}
+
+/// <summary>Una captura que FFmpeg hace por sí mismo: gdigrab, x11grab o la imagen de prueba.</summary>
+public sealed class FfmpegScreenSource(VideoOptions options, string[] input) : IScreenSource
+{
+    public VideoOptions Options => options;
+
+    public Task OpenAsync(CancellationToken ct) => Task.CompletedTask;
+
+    public ProcessStartInfo Encoder(string ffmpeg)
+    {
+        var info = new ProcessStartInfo(ffmpeg);
+        foreach (string argument in VideoEncoder.Arguments(input, options))
+            info.ArgumentList.Add(argument);
+        return info;
+    }
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}
+
+/// <summary>La captura de pantalla de cada sistema.</summary>
 public static partial class ScreenCapture
 {
-    /// <summary>Argumentos de entrada de FFmpeg para capturar la pantalla.</summary>
-    /// <exception cref="PlatformNotSupportedException">Este sistema aún no tiene captura en el núcleo.</exception>
-    public static string[] InputArguments(int fps)
+    /// <summary>El permiso de captura de Wayland, junto a las credenciales.</summary>
+    public static string PortalTokenFile =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AireCast", "screencast-token");
+
+    /// <exception cref="PlatformNotSupportedException">Este sistema no tiene captura.</exception>
+    public static IScreenSource Create(VideoOptions options)
     {
-        string rate = fps.ToString(CultureInfo.InvariantCulture);
+        string rate = options.Fps.ToString(CultureInfo.InvariantCulture);
         if (OperatingSystem.IsWindows())
-            return ["-f", "gdigrab", "-framerate", rate, "-i", "desktop"];
+            return new FfmpegScreenSource(options, ["-f", "gdigrab", "-framerate", rate, "-i", "desktop"]);
         if (OperatingSystem.IsLinux())
         {
-            if (Environment.GetEnvironmentVariable("XDG_SESSION_TYPE") == "wayland")
-                throw new PlatformNotSupportedException("La captura de Wayland aún no está en el núcleo: usa --source test");
-            return X11Arguments(rate);
+            return Environment.GetEnvironmentVariable("XDG_SESSION_TYPE") == "wayland"
+                ? new PortalScreenSource(options, PortalTokenFile)
+                : new FfmpegScreenSource(options, X11Arguments(rate));
         }
         throw new PlatformNotSupportedException("Sistema sin captura de pantalla");
     }
 
     /// <summary>Imagen de prueba generada por FFmpeg, para probar sin capturar la pantalla.</summary>
-    public static string[] TestPatternArguments(VideoOptions options)
+    public static IScreenSource TestPattern(VideoOptions options)
     {
         int width = options.Width ?? 1920, height = options.Height ?? 1080;
-        return ["-re", "-f", "lavfi", "-i", string.Create(CultureInfo.InvariantCulture, $"testsrc2=size={width}x{height}:rate={options.Fps}")];
+        return new FfmpegScreenSource(options,
+            ["-re", "-f", "lavfi", "-i", string.Create(CultureInfo.InvariantCulture, $"testsrc2=size={width}x{height}:rate={options.Fps}")]);
     }
 
     private static string[] X11Arguments(string rate)

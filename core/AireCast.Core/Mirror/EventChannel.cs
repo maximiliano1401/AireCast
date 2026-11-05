@@ -8,24 +8,24 @@ namespace AireCast.Core.Mirror;
 
 /// <summary>
 /// Canal de eventos: la TV manda peticiones (cambios de estado, avisos) y espera un 200 a cada una.
-/// Si no se responde, corta la sesión.
+/// Si no se responde, corta la sesión. Va cifrado con HomeKit y en claro con los receptores legacy.
 /// </summary>
 public sealed class EventChannel : IDisposable
 {
     private static readonly byte[] HeaderEnd = "\r\n\r\n"u8.ToArray();
 
     private readonly TcpClient _client;
-    private readonly HomeKitChannel _channel;
+    private readonly HomeKitChannel? _channel;
     private readonly CancellationTokenSource _stop = new();
     private byte[] _buffer = [];
 
-    private EventChannel(TcpClient client, HomeKitChannel channel)
+    private EventChannel(TcpClient client, HomeKitChannel? channel)
     {
         _client = client;
         _channel = channel;
     }
 
-    public static async Task<EventChannel> ConnectAsync(IPAddress address, int port, HomeKitChannel channel, CancellationToken ct)
+    public static async Task<EventChannel> ConnectAsync(IPAddress address, int port, HomeKitChannel? channel, CancellationToken ct)
     {
         var client = new TcpClient(address.AddressFamily) { NoDelay = true };
         await client.ConnectAsync(address, port, ct);
@@ -45,9 +45,9 @@ public sealed class EventChannel : IDisposable
                 int read = await stream.ReadAsync(buffer, _stop.Token);
                 if (read == 0)
                     return;
-                _buffer = [.. _buffer, .. _channel.Decrypt(buffer.AsSpan(0, read))];
+                _buffer = [.. _buffer, .. _channel is null ? buffer.AsSpan(0, read) : _channel.Decrypt(buffer.AsSpan(0, read))];
                 while (TakeRequest(ref _buffer) is { } reply)
-                    await stream.WriteAsync(_channel.Encrypt(reply), _stop.Token);
+                    await stream.WriteAsync(_channel?.Encrypt(reply) ?? reply, _stop.Token);
             }
         }
         catch (Exception ex) when (ex is OperationCanceledException or IOException or ObjectDisposedException)

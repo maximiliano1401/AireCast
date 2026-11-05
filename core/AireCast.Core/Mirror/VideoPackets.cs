@@ -10,6 +10,8 @@ public static class VideoPackets
     private const byte TypeVideo = 0;
     private const byte TypeCodec = 1;
     private const byte CodecOption = 0x16;
+    public const byte TypeHeartbeat = 2;
+    public const byte HeartbeatOption = 0x1E;
 
     /// <summary>Cabecera: tamaño, tipo, flags, opción, un byte a cero y la marca de tiempo; el resto, relleno.</summary>
     public static byte[] Header(int size, byte type, byte flags, byte option, ulong time)

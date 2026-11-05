@@ -9,6 +9,8 @@ public sealed record AirPlayDevice
 {
     private const uint PinRequired = 0x8;
     private const uint LegacyPairing = 0x200;
+    private const ulong UnifiedMediaControl = 1UL << 38;
+    private const ulong CoreUtilsPairing = 1UL << 48;
 
     /// <summary>Identificador principal: el de DMAP si lo anuncia (Apple TV antiguos) o el deviceid.</summary>
     public required string Id { get; init; }
@@ -30,7 +32,20 @@ public sealed record AirPlayDevice
     /// <summary>Hay que emparejarlo con PIN antes de usarlo.</summary>
     public bool NeedsPairing => (Flags & (PinRequired | LegacyPairing)) != 0;
 
+    /// <summary>Se empareja con HomeKit (AirPlay 2); si no, con el emparejamiento legacy.</summary>
+    public bool UsesHomeKit => (Features & (UnifiedMediaControl | CoreUtilsPairing)) != 0;
+
     private uint Flags => ParseHex(Properties.GetValueOrDefault("sf") ?? Properties.GetValueOrDefault("flags"));
+
+    /// <summary>«0x12345678» o «0x12345678,0xabcdef12», con la parte alta después.</summary>
+    private ulong Features
+    {
+        get
+        {
+            string[] parts = (Properties.GetValueOrDefault("features") ?? Properties.GetValueOrDefault("ft") ?? "").Split(',');
+            return ParseHex(parts[0]) | (parts.Length > 1 ? (ulong)ParseHex(parts[1]) << 32 : 0);
+        }
+    }
 
     private static uint ParseHex(string? value) =>
         uint.TryParse(value?.Replace("0x", "", StringComparison.OrdinalIgnoreCase), NumberStyles.HexNumber,

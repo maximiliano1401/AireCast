@@ -5,7 +5,9 @@ namespace AireCast.Core.Pairing;
 public static class Tlv8
 {
     public const byte Identifier = 1;
+    public const byte Salt = 2;
     public const byte PublicKey = 3;
+    public const byte Proof = 4;
     public const byte EncryptedData = 5;
     public const byte SeqNo = 6;
     public const byte Error = 7;

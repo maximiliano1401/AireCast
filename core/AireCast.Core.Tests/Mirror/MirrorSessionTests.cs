@@ -55,16 +55,6 @@ public class MirrorSessionTests
     }
 
     [Fact]
-    public async Task LegacyIsNotSupportedYet()
-    {
-        await using var receiver = new FakeReceiver();
-        receiver.Start();
-        using var connection = await AirPlayConnection.ConnectAsync(IPAddress.Loopback, receiver.Port);
-
-        await Assert.ThrowsAsync<NotSupportedException>(() => MirrorSession.StartAsync(new AirPlayClient(connection)));
-    }
-
-    [Fact]
     public async Task RealFfmpegStreamReachesTheReceiver()
     {
         if (!File.Exists("/usr/bin/ffmpeg") && !File.Exists("/usr/local/bin/ffmpeg"))
@@ -79,8 +69,8 @@ public class MirrorSessionTests
             VideoOptions options = VideoOptions.Create("720p", 30);
             using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(2));
 
-            long frames = await VideoEncoder.RunAsync("ffmpeg", VideoEncoder.Arguments(ScreenCapture.TestPatternArguments(options), options),
-                session, ct: stop.Token);
+            await using IScreenSource source = ScreenCapture.TestPattern(options);
+            long frames = await VideoEncoder.RunAsync(source.Encoder("ffmpeg"), session, ct: stop.Token);
 
             Assert.InRange(frames, 20, 90);
             await WaitUntil(() => receiver.Frames.Count >= frames);

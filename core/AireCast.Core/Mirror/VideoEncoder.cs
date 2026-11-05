@@ -32,12 +32,12 @@ public static class VideoEncoder
 
     /// <summary>Codifica hasta que se cancela o FFmpeg termina; devuelve los fotogramas enviados.</summary>
     /// <exception cref="IOException">FFmpeg terminó por su cuenta.</exception>
-    public static async Task<long> RunAsync(string ffmpeg, IEnumerable<string> arguments, IVideoSink sink,
+    public static async Task<long> RunAsync(ProcessStartInfo info, IVideoSink sink,
         Action<long>? onProgress = null, int progressInterval = 60, CancellationToken ct = default)
     {
-        var info = new ProcessStartInfo(ffmpeg) { RedirectStandardOutput = true, RedirectStandardError = true };
-        foreach (string argument in arguments)
-            info.ArgumentList.Add(argument);
+        info.RedirectStandardOutput = true;
+        info.RedirectStandardError = true;
+        info.CreateNoWindow = true;
 
         using Process process = Process.Start(info) ?? throw new IOException("No se pudo iniciar FFmpeg");
         Task<string> errors = process.StandardError.ReadToEndAsync(CancellationToken.None);
@@ -72,7 +72,7 @@ public static class VideoEncoder
         finally
         {
             if (!process.HasExited)
-                process.Kill();
+                process.Kill(entireProcessTree: true);
             await process.WaitForExitAsync(CancellationToken.None);
         }
     }

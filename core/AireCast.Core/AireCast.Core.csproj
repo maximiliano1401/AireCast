@@ -8,6 +8,11 @@
 
   <ItemGroup>
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.95.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="AireCast.Core.Tests" />
   </ItemGroup>
 
 </Project>

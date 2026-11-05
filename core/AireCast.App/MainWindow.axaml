@@ -1,0 +1,103 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:app="clr-namespace:AireCast.App"
+        x:Class="AireCast.App.MainWindow"
+        x:DataType="app:MainWindow"
+        Title="AireCast" Width="620" Height="720" MinWidth="440" MinHeight="520"
+        Background="#070B14">
+  <Grid RowDefinitions="Auto,*,Auto,Auto" Margin="16">
+    <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+      <StackPanel>
+        <TextBlock Text="AireCast" FontSize="18" FontWeight="Bold" />
+        <TextBlock Text="Tu pantalla y su audio en el televisor" Classes="meta" />
+      </StackPanel>
+      <Button x:Name="ScanButton" Grid.Column="1" Content="Buscar" Click="OnScan" VerticalAlignment="Center" CornerRadius="10" />
+    </Grid>
+
+    <ScrollViewer Grid.Row="1">
+      <StackPanel Spacing="10">
+        <Border Classes="panel">
+          <StackPanel Spacing="6">
+            <TextBlock Text="DISPOSITIVOS" Classes="heading" />
+            <ListBox x:Name="DeviceList" Background="Transparent" MaxHeight="230" SelectionChanged="OnDeviceSelected">
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="app:DeviceRow">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel>
+                      <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Text="{Binding Details}" Classes="meta" />
+                    </StackPanel>
+                    <Border Grid.Column="1" Classes="tag" VerticalAlignment="Center" IsVisible="{Binding HasState}">
+                      <TextBlock Text="{Binding State}" FontSize="10.5" Foreground="#AEC6FF" />
+                    </Border>
+                  </Grid>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+            <TextBlock x:Name="EmptyText" Classes="meta" TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <Border x:Name="PairPanel" Classes="panel" IsVisible="False">
+          <StackPanel Spacing="8">
+            <TextBlock x:Name="PairTitle" FontWeight="SemiBold" />
+            <TextBlock Text="Escribe el PIN de 4 dígitos que aparece en la TV." Classes="meta" />
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBox x:Name="PinBox" MaxLength="4" PlaceholderText="••••" KeyDown="OnPinKey" />
+              <Button x:Name="PinButton" Grid.Column="1" Classes="primary" Content="Emparejar" Margin="8,0,0,0" Click="OnPair" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <Border x:Name="CodePanel" Classes="panel" IsVisible="False">
+          <StackPanel Spacing="8">
+            <TextBlock Text="Código en pantalla" FontWeight="SemiBold" />
+            <TextBlock x:Name="CodeText" Classes="meta" TextWrapping="Wrap" />
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBox x:Name="CodeBox" MaxLength="4" PlaceholderText="••••" KeyDown="OnCodeKey" />
+              <Button Grid.Column="1" Classes="primary" Content="Conectar" Margin="8,0,0,0" Click="OnCode" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <Border Classes="panel">
+          <StackPanel Spacing="10">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="COMPARTIR PANTALLA" Classes="heading" VerticalAlignment="Center" />
+              <TextBlock x:Name="TargetText" Grid.Column="1" Classes="meta" Text="Elige un dispositivo" />
+            </Grid>
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="Resolución" Classes="label" />
+              <ComboBox x:Name="ResolutionBox" Grid.Column="1" MinWidth="150" SelectionChanged="OnSettingChanged" />
+            </Grid>
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="Fotogramas por segundo" Classes="label" />
+              <ComboBox x:Name="FpsBox" Grid.Column="1" MinWidth="150" SelectionChanged="OnSettingChanged" />
+            </Grid>
+            <TextBlock Classes="meta" TextWrapping="Wrap"
+                       Text="«Nativa» usa la de esta pantalla, sin escalar: es la más nítida. Por encima de 1080p (también la nativa si tu pantalla es mayor) hace falta un receptor que lo admita, como el Apple TV 4K." />
+            <Button x:Name="ShareButton" Classes="primary" Content="Compartir pantalla" HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Center" IsEnabled="False" Click="OnShare" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+
+    <Border x:Name="NowPlaying" Grid.Row="2" Classes="panel" Margin="0,10,0,0" IsVisible="False">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel VerticalAlignment="Center">
+          <TextBlock Text="Duplicando pantalla" FontWeight="SemiBold" />
+          <TextBlock x:Name="NowPlayingTarget" Classes="meta" />
+        </StackPanel>
+        <Button Grid.Column="1" Classes="stop" Content="Detener" Click="OnStop" />
+      </Grid>
+    </Border>
+
+    <StackPanel Grid.Row="3" Margin="0,10,0,0" Spacing="6">
+      <TextBlock x:Name="StatusText" Classes="label" TextWrapping="Wrap" />
+      <Expander Header="Registro técnico" HorizontalAlignment="Stretch">
+        <TextBox x:Name="LogBox" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" Height="120" FontSize="11" />
+      </Expander>
+    </StackPanel>
+  </Grid>
+</Window>

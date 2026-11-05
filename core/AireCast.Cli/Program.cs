@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 using System.Globalization;
+using AireCast.Core.Audio;
 using AireCast.Core.Discovery;
 using AireCast.Core.Mirror;
 using AireCast.Core.Net;
@@ -12,8 +13,15 @@ try
         ["discover", .. var rest] => await Discover(rest),
         ["verify", var target] => await Verify(target),
         ["mirror", var target, .. var rest] => await Mirror(target, rest),
+        ["capture", .. var rest] => await Capture(rest),
+        ["pair", var target] => await Pair(target),
+        [LinuxAudioCap.Argument, .. var rest] => LinuxAudioCap.Run(rest),
         _ => Usage(),
     };
+}
+catch (OperationCanceledException)
+{
+    return 0;
 }
 catch (Exception ex) when (ex is IOException or System.Net.Sockets.SocketException or PairingException
     or NotSupportedException or PlatformNotSupportedException or ArgumentException or FormatException)
@@ -26,7 +34,9 @@ static int Usage()
 {
     Console.Error.WriteLine("Uso: airecast discover [segundos]");
     Console.Error.WriteLine("     airecast verify <nombre, id o dirección>");
-    Console.Error.WriteLine("     airecast mirror <nombre, id o dirección> [--resolution 1080p] [--fps 30] [--source screen|test] [--ffmpeg ruta]");
+    Console.Error.WriteLine("     airecast pair <nombre, id o dirección>");
+    Console.Error.WriteLine("     airecast capture [--seconds 5] [--resolution 1080p] [--fps 30] [--source screen|test] [--ffmpeg ruta]");
+    Console.Error.WriteLine("     airecast mirror <nombre, id o dirección> [--resolution 1080p] [--fps 30] [--source screen|test] [--ffmpeg ruta] [--no-audio]");
     return 2;
 }
 
@@ -78,25 +88,40 @@ static async Task<int> Verify(string target)
     return 0;
 }
 
+static string Option(string[] args, string name, string fallback)
+{
+    int index = Array.IndexOf(args, name);
+    return index >= 0 && index + 1 < args.Length ? args[index + 1] : fallback;
+}
+
+static IScreenSource Source(string[] args)
+{
+    VideoOptions options = VideoOptions.Create(Option(args, "--resolution", "1080p"), int.Parse(Option(args, "--fps", "30"), CultureInfo.InvariantCulture));
+    return Option(args, "--source", "screen") == "test" ? ScreenCapture.TestPattern(options) : ScreenCapture.Create(options);
+}
+
+/// <summary>Captura y codifica sin TV: sirve para comprobar la captura de cada sistema.</summary>
+static async Task<int> Capture(string[] args)
+{
+    await using IScreenSource source = Source(args);
+    await source.OpenAsync(default);
+    var sink = new CountingSink();
+    double seconds = double.Parse(Option(args, "--seconds", "5"), CultureInfo.InvariantCulture);
+    using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(seconds));
+    long frames = await VideoEncoder.RunAsync(source.Encoder(Option(args, "--ffmpeg", MirrorController.FindFfmpeg())), sink, ct: stop.Token);
+    Console.WriteLine($"{frames} fotogramas en {seconds} s ({frames / seconds:F1} fps), {sink.Size.Width}x{sink.Size.Height}, nivel {sink.Level}, {sink.Bytes * 8 / seconds / 1e6:F1} Mb/s");
+    return 0;
+}
+
 static async Task<int> Mirror(string target, string[] args)
 {
-    string Option(string name, string fallback)
-    {
-        int index = Array.IndexOf(args, name);
-        return index >= 0 && index + 1 < args.Length ? args[index + 1] : fallback;
-    }
-
-    VideoOptions options = VideoOptions.Create(Option("--resolution", "1080p"), int.Parse(Option("--fps", "30"), CultureInfo.InvariantCulture));
-    string[] input = Option("--source", "screen") == "test"
-        ? ScreenCapture.TestPatternArguments(options)
-        : ScreenCapture.InputArguments(options.Fps);
-
+    await using IScreenSource source = Source(args);
     if (await Find(target) is not { } device)
         return 1;
     Credentials? credentials = CredentialStore.Find(device.Identifiers);
     if (credentials is null)
     {
-        Console.Error.WriteLine($"No hay credenciales para «{device.Name}»: empareja primero con la app");
+        Console.Error.WriteLine($"No hay credenciales para «{device.Name}»: empareja primero con «airecast pair»");
         return 1;
     }
 
@@ -106,16 +131,29 @@ static async Task<int> Mirror(string target, string[] args)
         e.Cancel = true;
         stop.Cancel();
     };
-
-    using var connection = await AirPlayConnection.ConnectAsync(device.Address, device.Port);
-    var client = new AirPlayClient(connection);
-    await client.VerifyAsync(credentials);
-    await using MirrorSession session = await MirrorSession.StartAsync(client);
-    Console.WriteLine($"Duplicando en «{device.Name}» a {options.Fps} fps. Ctrl+C para terminar.");
-    long frames = await VideoEncoder.RunAsync(Option("--ffmpeg", "ffmpeg"), VideoEncoder.Arguments(input, options), session,
-        sent => Console.WriteLine($"{sent} fotogramas enviados"), options.Fps * 2, stop.Token);
+    var callbacks = new MirrorCallbacks { AskCode = AskCode, Log = Console.WriteLine };
+    long frames = await MirrorController.RunAsync(device, credentials, source, Option(args, "--ffmpeg", MirrorController.FindFfmpeg()),
+        callbacks, !args.Contains("--no-audio"), stop.Token);
     Console.WriteLine($"Terminado: {frames} fotogramas");
     return 0;
+}
+
+static async Task<int> Pair(string target)
+{
+    if (await Find(target) is not { } device)
+        return 1;
+    using AirPlayPairing pairing = await AirPlayPairing.BeginAsync(device);
+    Console.Write("Escribe el PIN que muestra la TV: ");
+    Credentials credentials = await pairing.FinishAsync(Console.ReadLine() ?? "");
+    CredentialStore.Save(device.Id, credentials);
+    Console.WriteLine($"«{device.Name}» emparejado ({credentials.Kind})");
+    return 0;
+}
+
+static Task<string> AskCode(bool retry, CancellationToken ct)
+{
+    Console.Write(retry ? "Código incorrecto. Escribe el nuevo código de la TV: " : "Escribe el código que muestra la TV: ");
+    return Task.FromResult(Console.ReadLine()?.Trim() ?? "");
 }
 
 static void PrintInfo(string title, ReceiverInfo info)
@@ -123,4 +161,25 @@ static void PrintInfo(string title, ReceiverInfo info)
     Console.WriteLine($"{title}: {info.Name} [{info.Model}] versión {info.SourceVersion}");
     foreach (ReceiverDisplay display in info.Displays)
         Console.WriteLine($"  pantalla {display.Width}x{display.Height}, máximo {display.MaxWidth}x{display.MaxHeight} a {display.MaxFps} fps");
+}
+
+/// <summary>Sumidero que solo cuenta, para medir la captura sin TV.</summary>
+internal sealed class CountingSink : IVideoSink
+{
+    public (int Width, int Height) Size { get; private set; }
+    public double Level { get; private set; }
+    public long Bytes { get; private set; }
+
+    public Task SendCodecAsync(byte[] sps, byte[] pps, CancellationToken ct)
+    {
+        Size = H264.SpsSize(sps);
+        Level = sps[3] / 10.0;
+        return Task.CompletedTask;
+    }
+
+    public Task SendFrameAsync(IReadOnlyList<byte[]> nals, CancellationToken ct)
+    {
+        Bytes += nals.Sum(nal => nal.Length);
+        return Task.CompletedTask;
+    }
 }
