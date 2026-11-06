@@ -1,13 +1,13 @@
 <Project>
   <!--
-    audiocap.exe captura el audio del sistema en Windows (ver ../audiocap.cs) y AudioCapture lo busca junto al
+    audiocap.exe captura el audio del sistema en Windows (ver audiocap/audiocap.cs) y AudioCapture lo busca junto al
     ejecutable. Sin él la TV recibe silencio y el PC sigue sonando. Este archivo lo importan la app y la consola:
     compila audiocap.exe si falta y lo copia al ejecutar (dotnet run) y al publicar.
   -->
   <PropertyGroup>
-    <AudioCapSource>$(MSBuildThisFileDirectory)..\audiocap.cs</AudioCapSource>
-    <AudioCapScript>$(MSBuildThisFileDirectory)..\build-audiocap.ps1</AudioCapScript>
-    <AudioCapExe>$(MSBuildThisFileDirectory)..\build\audiocap\audiocap.exe</AudioCapExe>
+    <AudioCapSource>$(MSBuildThisFileDirectory)audiocap\audiocap.cs</AudioCapSource>
+    <AudioCapScript>$(MSBuildThisFileDirectory)audiocap\build-audiocap.ps1</AudioCapScript>
+    <AudioCapExe>$(MSBuildThisFileDirectory)audiocap\build\audiocap.exe</AudioCapExe>
     <AudioCapForWindows Condition="$(RuntimeIdentifier.StartsWith('win')) Or ('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows')))">true</AudioCapForWindows>
   </PropertyGroup>
 
@@ -19,7 +19,7 @@
 
   <Target Name="CopyAudioCap" AfterTargets="Build" DependsOnTargets="BuildAudioCap" Condition="'$(AudioCapForWindows)' == 'true'">
     <Warning Condition="!Exists('$(AudioCapExe)')"
-             Text="No se encontró $(AudioCapExe): en Windows la TV recibirá silencio. Compílalo con «npm run build:audiocap» en la raíz del repositorio." />
+             Text="No se encontró $(AudioCapExe): en Windows la TV recibirá silencio. Compílalo con core\audiocap\build-audiocap.ps1." />
     <Copy Condition="Exists('$(AudioCapExe)')" SourceFiles="$(AudioCapExe)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
   </Target>
 

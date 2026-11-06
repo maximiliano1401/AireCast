@@ -1,25 +1,19 @@
-# --- Dependencias (se reinstalan) ---
-# npm install
-node_modules/
-# python -m venv .venv && .venv\Scripts\pip install -r requirements.txt
-.venv/
-venv/
-__pycache__/
-*.py[cod]
-
 # --- Artefactos de build (se regeneran) ---
-# npm run build:bridge  -> build/bridge, build/ffmpeg, build/pyinstaller
-build/
-# dotnet build (core/)
+# dotnet build
 bin/
 obj/
-# npm run dist (electron-builder)
-release/
+# core/publish.sh
 dist/
-*.spec
+# core/audiocap/build-audiocap.ps1
+build/
+
+# --- Rama legacy (Electron y Python): quedan en disco al cambiar de rama ---
+node_modules/
+.venv/
+__pycache__/
+release/
 
 # --- Datos locales / secretos ---
-# Credenciales de emparejamiento AirPlay generadas por bridge.py
 credentials.json
 *.log
 

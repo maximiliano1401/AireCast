@@ -1,3 +1,0 @@
-﻿pyatv==0.18.0
-srptools==1.0.1  # 2.x rompe el emparejamiento con PIN de pyatv 0.18
-jeepney==0.9.0; sys_platform == "linux"  # D-Bus del portal de captura en Wayland (screencast_linux.py)

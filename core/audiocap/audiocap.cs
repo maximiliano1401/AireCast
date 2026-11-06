@@ -3,14 +3,14 @@
 // Uso: audiocap.exe <pid_excluido> [--mute]
 //
 // - Captura con "process loopback" (Windows 10 2004+) todo el audio excepto el del árbol de
-//   procesos <pid_excluido> (el puente de AireCast). Esta captura ocurre ANTES del volumen y del
+//   procesos <pid_excluido> (AireCast). Esta captura ocurre ANTES del volumen y del
 //   silencio de Windows, así que la TV recibe la señal completa aunque el PC esté silenciado.
 // - Escribe PCM 44100 Hz, 16 bits, estéreo, little-endian por stdout.
 // - Con --mute silencia la salida del PC mientras corre y la restaura al terminar. Termina cuando
-//   se cierra su stdin (incluido si el puente muere), así el silencio nunca se queda puesto.
+//   se cierra su stdin (incluido si AireCast muere), así el silencio nunca se queda puesto.
 // - Escribe "ok" (o "error: …") en stderr al iniciar.
 //
-// Se compila con el csc.exe de .NET Framework incluido en Windows (C# 5): ver build-bridge.ps1.
+// Se compila con el csc.exe de .NET Framework incluido en Windows (C# 5): ver build-audiocap.ps1.
 
 using System;
 using System.IO;
