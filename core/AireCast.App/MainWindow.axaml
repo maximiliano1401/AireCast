@@ -3,13 +3,16 @@
         xmlns:app="clr-namespace:AireCast.App"
         x:Class="AireCast.App.MainWindow"
         x:DataType="app:MainWindow"
-        Title="AireCast" Width="620" Height="720" MinWidth="440" MinHeight="520"
+        Title="AireCast" Icon="avares://AireCast.App/logo-256.png" Width="620" Height="720" MinWidth="440" MinHeight="520"
         Background="#070B14">
   <Grid RowDefinitions="Auto,*,Auto,Auto" Margin="16">
     <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,12">
-      <StackPanel>
-        <TextBlock Text="AireCast" FontSize="18" FontWeight="Bold" />
-        <TextBlock Text="Tu pantalla y su audio en el televisor" Classes="meta" />
+      <StackPanel Orientation="Horizontal" Spacing="10">
+        <Image Source="avares://AireCast.App/logo-256.png" Width="38" Height="38" />
+        <StackPanel VerticalAlignment="Center">
+          <TextBlock Text="AireCast" FontSize="18" FontWeight="Bold" />
+          <TextBlock Text="Tu pantalla y su audio en el televisor" Classes="meta" />
+        </StackPanel>
       </StackPanel>
       <Button x:Name="ScanButton" Grid.Column="1" Content="Buscar" Click="OnScan" VerticalAlignment="Center" CornerRadius="10" />
     </Grid>

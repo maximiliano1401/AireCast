@@ -1,0 +1,51 @@
+# Al subir una etiqueta v*, genera los paquetes y crea un borrador de release con ellos.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - run: sudo apt-get update && sudo apt-get install -y rpm
+      - run: dotnet test core/AireCast.Core.Tests
+      - run: packaging/linux/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/packages/*
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - run: choco install innosetup -y
+      - run: packaging\windows\build.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/packages/*
+
+  release:
+    needs: [linux, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages
+          merge-multiple: true
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" packages/* --draft --generate-notes --repo "$GITHUB_REPOSITORY"
