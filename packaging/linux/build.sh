@@ -46,6 +46,8 @@ mkdir -p "$root/usr/bin"
 ln -s /opt/airecast/AireCast.App "$root/usr/bin/airecast"
 
 SUMMARY="Duplica tu pantalla en televisores AirPlay"
+# Avisa al escritorio de que hay un lanzador y un icono nuevos; sin esto puede tardar en verlos.
+REFRESH_MENU='update-desktop-database -q /usr/share/applications 2>/dev/null || true; gtk-update-icon-cache -q -f /usr/share/icons/hicolor 2>/dev/null || true'
 
 # --- .deb (ar con control y datos: no hace falta dpkg) -------------------------------------------
 deb="$WORK/deb"
@@ -61,6 +63,9 @@ Priority: optional
 Homepage: https://github.com/maximiliano1401/AireCast
 Description: $SUMMARY
 CONTROL
+printf '#!/bin/sh\n%s\n' "$REFRESH_MENU" > "$deb/control/postinst"
+cp "$deb/control/postinst" "$deb/control/postrm"
+chmod 755 "$deb/control/postinst" "$deb/control/postrm"
 tar --owner=0 --group=0 -czf "$deb/control.tar.gz" -C "$deb/control" .
 tar --owner=0 --group=0 -cJf "$deb/data.tar.xz" -C "$root" .
 echo 2.0 > "$deb/debian-binary"
@@ -89,6 +94,12 @@ $SUMMARY.
 %install
 cp -a "$root/." %{buildroot}/
 
+%post
+$REFRESH_MENU
+
+%postun
+$REFRESH_MENU
+
 %files
 /opt/airecast
 /usr/bin/airecast
@@ -105,7 +116,7 @@ if [ "${1:-}" != "--no-appimage" ]; then
     appdir="$WORK/AireCast.AppDir"
     mkdir -p "$appdir/usr/bin"
     cp -a "$root/opt/airecast/." "$appdir/usr/bin/"
-    cp packaging/linux/airecast.desktop "$appdir/airecast.desktop"
+    sed 's:^Exec=.*:Exec=AireCast.App:' packaging/linux/airecast.desktop > "$appdir/airecast.desktop"
     cp assets/logo-256.png "$appdir/airecast.png"
     printf '#!/bin/sh\nexec "$(dirname "$(readlink -f "$0")")/usr/bin/AireCast.App" "$@"\n' > "$appdir/AppRun"
     chmod +x "$appdir/AppRun"

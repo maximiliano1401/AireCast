@@ -2,8 +2,8 @@
 Type=Application
 Name=AireCast
 Comment=Duplica tu pantalla en televisores AirPlay
-Exec=airecast
+Exec=/opt/airecast/AireCast.App
 Icon=airecast
 Terminal=false
-Categories=AudioVideo;Network;
+Categories=AudioVideo;Video;
 StartupWMClass=AireCast.App
