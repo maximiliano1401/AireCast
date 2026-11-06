@@ -13,6 +13,15 @@ public static class H264
 
     public static int NalType(byte[] nal) => nal[0] & 0x1F;
 
+    /// <summary>Los NAL de un búfer Annex-B completo, como los que entrega MediaCodec en Android.</summary>
+    public static List<byte[]> SplitBuffer(ReadOnlySpan<byte> data)
+    {
+        var splitter = new AnnexBSplitter();
+        List<byte[]> nals = splitter.Feed(data);
+        nals.AddRange(splitter.Feed([0, 0, 1])); // un código de inicio final cierra el último NAL
+        return nals;
+    }
+
     /// <summary>Registro AVCDecoderConfigurationRecord a partir de SPS y PPS.</summary>
     public static byte[] BuildAvcc(byte[] sps, byte[] pps)
     {

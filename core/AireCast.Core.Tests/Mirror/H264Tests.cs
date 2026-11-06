@@ -42,5 +42,13 @@ public class H264Tests
     }
 
     [Fact]
+    public void SplitsACompleteBuffer()
+    {
+        byte[] buffer = [0, 0, 0, 1, 0x67, 0x42, 0, 0, 0, 1, 0x68, 0xCE, 0, 0, 1, 0x65, 0x88];
+
+        Assert.Equal([[0x67, 0x42], [0x68, 0xCE], [0x65, 0x88]], H264.SplitBuffer(buffer));
+    }
+
+    [Fact]
     public void ToleratesDataWithoutStartCode() => Assert.Empty(new AnnexBSplitter().Feed([0, 0]));
 }
