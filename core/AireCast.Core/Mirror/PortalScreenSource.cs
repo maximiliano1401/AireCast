@@ -39,7 +39,7 @@ public sealed class PortalScreenSource(VideoOptions requested, string tokenFile)
 
     public VideoOptions Options { get; private set; } = requested;
 
-    public string Name => "portal de Wayland";
+    public string Name { get; private set; } = "portal de Wayland";
 
     public async Task OpenAsync(CancellationToken ct)
     {
@@ -127,8 +127,11 @@ public sealed class PortalScreenSource(VideoOptions requested, string tokenFile)
         if (Fcntl(fd, FSetFd, 0) != 0)
             throw new IOException("No se pudo pasar el descriptor de PipeWire a GStreamer");
 
+        EncoderChoice encoder = EncoderSelector.Choose(ffmpeg, Options);
+        Name = $"portal de Wayland y {encoder.Name}";
         string width = Text(Options.Width!.Value), height = Text(Options.Height!.Value), fps = Text(Options.Fps);
-        string caps = $"video/x-raw,format=I420,width={width},height={height},framerate={fps}/1,pixel-aspect-ratio=1/1";
+        string format = encoder.PixelFormat == "nv12" ? "NV12" : "I420";
+        string caps = $"video/x-raw,format={format},width={width},height={height},framerate={fps}/1,pixel-aspect-ratio=1/1";
         // GNOME solo envía fotogramas cuando cambia la pantalla: keepalive-time repite el último para
         // que el flujo no se detenga con la imagen quieta. Se escala antes de convertir el color,
         // que así trabaja con menos píxeles. videorate numera bien los fotogramas pero los suelta a
@@ -140,11 +143,11 @@ public sealed class PortalScreenSource(VideoOptions requested, string tokenFile)
             "!", "videoscale", "n-threads=0", "!", "videoconvert", "n-threads=0", "!", "videorate",
             "!", caps, "!", "fdsink", "fd=1", "sync=true", "max-lateness=-1", "qos=false",
         ];
-        string[] input = ["-f", "rawvideo", "-pix_fmt", "yuv420p", "-video_size", $"{width}x{height}", "-framerate", fps, "-i", "pipe:0"];
+        string[] input = ["-f", "rawvideo", "-pix_fmt", encoder.PixelFormat, "-video_size", $"{width}x{height}", "-framerate", fps, "-i", "pipe:0"];
 
         var info = new ProcessStartInfo("/bin/sh");
         info.ArgumentList.Add("-c");
-        info.ArgumentList.Add($"{Quote(gst)} | {Quote([ffmpeg, .. VideoEncoder.Arguments(input, Options)])}");
+        info.ArgumentList.Add($"{Quote(gst)} | {Quote([encoder.Ffmpeg, .. encoder.Arguments(input, Options)])}");
         return info;
     }
 

@@ -25,14 +25,16 @@ public sealed class FfmpegScreenSource(string name, VideoOptions options, string
 {
     public VideoOptions Options => options;
 
-    public string Name => name;
+    public string Name { get; private set; } = name;
 
     public Task OpenAsync(CancellationToken ct) => Task.CompletedTask;
 
     public ProcessStartInfo Encoder(string ffmpeg)
     {
-        var info = new ProcessStartInfo(ffmpeg);
-        foreach (string argument in VideoEncoder.Arguments(input, options))
+        EncoderChoice encoder = EncoderSelector.Choose(ffmpeg, options);
+        Name = $"{name} y {encoder.Name}";
+        var info = new ProcessStartInfo(encoder.Ffmpeg);
+        foreach (string argument in encoder.Arguments(input, options))
             info.ArgumentList.Add(argument);
         return info;
     }
@@ -61,13 +63,14 @@ public sealed class WindowsScreenSource(VideoOptions options) : IScreenSource
 
     public ProcessStartInfo Encoder(string ffmpeg)
     {
-        var info = new ProcessStartInfo(ffmpeg);
-        bool duplication = CanDuplicateDesktop(ffmpeg);
-        Name = duplication ? "ddagrab" : "gdigrab";
+        EncoderChoice encoder = EncoderSelector.Choose(ffmpeg, options);
+        var info = new ProcessStartInfo(encoder.Ffmpeg);
+        bool duplication = CanDuplicateDesktop(encoder.Ffmpeg);
+        Name = $"{(duplication ? "ddagrab" : "gdigrab")} y {encoder.Name}";
         string rate = options.Fps.ToString(CultureInfo.InvariantCulture);
         string[] arguments = duplication
-            ? VideoEncoder.Arguments(DesktopDuplicationInput(options.Fps), options, DownloadFrames)
-            : VideoEncoder.Arguments(["-f", "gdigrab", "-framerate", rate, "-i", "desktop"], options);
+            ? encoder.Arguments(DesktopDuplicationInput(options.Fps), options, DownloadFrames)
+            : encoder.Arguments(["-f", "gdigrab", "-framerate", rate, "-i", "desktop"], options);
         foreach (string argument in arguments)
             info.ArgumentList.Add(argument);
         return info;

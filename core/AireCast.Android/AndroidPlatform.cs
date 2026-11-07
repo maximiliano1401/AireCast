@@ -16,6 +16,8 @@ internal sealed class AndroidPlatform(Context context) : IMirrorPlatform
 
     public string? ShareNote => "El teléfono seguirá sonando. Algunas apps no dejan capturar su audio: en la TV no se oirán.";
 
+    public bool CanChooseEncoder => false; // MediaCodec siempre codifica por hardware
+
     public IDisposable BeginDiscovery()
     {
         // Android descarta el multicast entrante si no se pide este permiso temporal.

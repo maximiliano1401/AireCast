@@ -7,10 +7,10 @@ using AireCast.Core.Mirror;
 
 namespace AireCast.Ui;
 
-/// <summary>La resolución, los fps y el tipo de red elegidos, que se recuerdan en este equipo.</summary>
-internal sealed record AppSettings(string Resolution, int Fps, string Network)
+/// <summary>La resolución, los fps, el tipo de red y el uso de la GPU elegidos, que se recuerdan en este equipo.</summary>
+internal sealed record AppSettings(string Resolution, int Fps, string Network, bool Hardware)
 {
-    private static readonly AppSettings Default = new("1080p", 30, NetworkProfile.Normal.Name);
+    private static readonly AppSettings Default = new("1080p", 30, NetworkProfile.Normal.Name, true);
 
     private static string FilePath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AireCast", "settings.json");
@@ -25,8 +25,9 @@ internal sealed record AppSettings(string Resolution, int Fps, string Network)
             // Los ajustes guardados por versiones anteriores no tienen «network»: se conservan los demás.
             string network = json.RootElement.TryGetProperty("network", out JsonElement saved) && saved.GetString() is { } name
                 && NetworkProfile.Choices.Any(profile => profile.Name == name) ? name : Default.Network;
+            bool hardware = !json.RootElement.TryGetProperty("hardware", out JsonElement gpu) || gpu.ValueKind != JsonValueKind.False;
             bool valid = VideoOptions.Resolutions.ContainsKey(resolution) && VideoOptions.FpsChoices.Contains(fps);
-            return valid ? new AppSettings(resolution, fps, network) : Default;
+            return valid ? new AppSettings(resolution, fps, network, hardware) : Default;
         }
         catch (Exception ex) when (ex is IOException or JsonException or InvalidOperationException or System.Collections.Generic.KeyNotFoundException)
         {
@@ -45,6 +46,7 @@ internal sealed record AppSettings(string Resolution, int Fps, string Network)
             writer.WriteString("resolution", Resolution);
             writer.WriteNumber("fps", Fps);
             writer.WriteString("network", Network);
+            writer.WriteBoolean("hardware", Hardware);
             writer.WriteEndObject();
         }
         catch (IOException)

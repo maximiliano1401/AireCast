@@ -18,16 +18,17 @@ public static class VideoEncoder
     /// se veía pixelado). AUD y SPS/PPS repetidos los exigen el troceo y los receptores. El nivel
     /// H.264 lo elige x264 según tamaño, fps y tope. <paramref name="inputFilter"/> va antes de escalar.
     /// </summary>
-    public static string[] Arguments(IEnumerable<string> input, VideoOptions options, string? inputFilter = null)
+    public static string[] Arguments(IEnumerable<string> input, VideoOptions options, string? inputFilter = null, HardwareCodec? hardware = null)
     {
         string fps = options.Fps.ToString(CultureInfo.InvariantCulture);
         string bitrate = options.MaxBitrate.ToString(CultureInfo.InvariantCulture) + "M";
+        string filter = string.Join(',', new[] { inputFilter, options.ScaleFilter, hardware?.Upload }.Where(part => part is not null));
+        string[] start = ["-hide_banner", "-loglevel", "error", "-nostdin", .. hardware?.Device ?? [], .. LowDelayInput, .. input, "-vf", filter];
+        if (hardware is not null)
+            return [.. start, .. hardware.Arguments(options), .. hardware.Upload is null ? ["-pix_fmt", hardware.PixelFormat] : Array.Empty<string>(), "-f", "h264", "-"];
         return
         [
-            "-hide_banner", "-loglevel", "error", "-nostdin",
-            .. LowDelayInput,
-            .. input,
-            "-vf", inputFilter is null ? options.ScaleFilter : $"{inputFilter},{options.ScaleFilter}",
+            .. start,
             "-c:v", "libx264", "-preset", "superfast", "-tune", "zerolatency", "-crf", "20",
             "-maxrate", bitrate, "-bufsize", bitrate,
             "-profile:v", "baseline", "-pix_fmt", "yuv420p",

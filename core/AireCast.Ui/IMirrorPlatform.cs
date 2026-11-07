@@ -18,6 +18,9 @@ public interface IMirrorPlatform
     /// <summary>Un aviso bajo el botón de compartir, si este sistema tiene algo que advertir.</summary>
     string? ShareNote { get; }
 
+    /// <summary>Si se puede elegir entre codificar con la GPU o con el procesador.</summary>
+    bool CanChooseEncoder { get; }
+
     /// <summary>Prepara la búsqueda de receptores; se libera al terminarla.</summary>
     IDisposable BeginDiscovery();
 

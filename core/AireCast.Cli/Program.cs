@@ -35,8 +35,8 @@ static int Usage()
     Console.Error.WriteLine("Uso: airecast discover [segundos]");
     Console.Error.WriteLine("     airecast verify <nombre, id o dirección>");
     Console.Error.WriteLine("     airecast pair <nombre, id o dirección>");
-    Console.Error.WriteLine("     airecast capture [--seconds 5] [--resolution 1080p] [--fps 30] [--source screen|test] [--ffmpeg ruta]");
-    Console.Error.WriteLine("     airecast mirror <nombre, id o dirección> [--resolution 1080p] [--fps 30] [--source screen|test] [--ffmpeg ruta] [--no-audio] [--network normal|unstable]");
+    Console.Error.WriteLine("     airecast capture [--seconds 5] [--resolution 1080p] [--fps 30] [--source screen|test] [--encoder auto|software] [--ffmpeg ruta]");
+    Console.Error.WriteLine("     airecast mirror <nombre, id o dirección> [--resolution 1080p] [--fps 30] [--source screen|test] [--encoder auto|software] [--ffmpeg ruta] [--no-audio] [--network normal|unstable]");
     return 2;
 }
 
@@ -96,7 +96,8 @@ static string Option(string[] args, string name, string fallback)
 
 static IScreenSource Source(string[] args)
 {
-    VideoOptions options = VideoOptions.Create(Option(args, "--resolution", "1080p"), int.Parse(Option(args, "--fps", "30"), CultureInfo.InvariantCulture));
+    VideoOptions options = VideoOptions.Create(Option(args, "--resolution", "1080p"), int.Parse(Option(args, "--fps", "30"), CultureInfo.InvariantCulture))
+        with { UseHardware = Option(args, "--encoder", "auto") != "software" };
     return Option(args, "--source", "screen") == "test" ? ScreenCapture.TestPattern(options) : ScreenCapture.Create(options);
 }
 
@@ -110,6 +111,7 @@ static async Task<int> Capture(string[] args)
     using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(seconds));
     long frames = await VideoEncoder.RunAsync(source.Encoder(Option(args, "--ffmpeg", MirrorController.FindFfmpeg())), sink, ct: stop.Token);
     Console.WriteLine($"{frames} fotogramas en {seconds} s ({frames / seconds:F1} fps), {sink.Size.Width}x{sink.Size.Height}, nivel {sink.Level}, {sink.Bytes * 8 / seconds / 1e6:F1} Mb/s");
+    Console.WriteLine(source.Name);
     Console.WriteLine(sink.Pacing());
     return 0;
 }

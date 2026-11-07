@@ -111,6 +111,14 @@
                   <TextBlock Text="Fotogramas por segundo" Classes="row" TextTrimming="CharacterEllipsis" />
                   <ComboBox x:Name="FpsBox" Grid.Column="1" Classes="row" SelectionChanged="OnSettingChanged" />
                 </Grid>
+                <StackPanel x:Name="HardwareRow">
+                  <Border Classes="separator" />
+                  <Grid ColumnDefinitions="*,Auto" Margin="16,0,12,0" MinHeight="48">
+                    <TextBlock Text="Codificar con la GPU" Classes="row" />
+                    <ToggleSwitch x:Name="HardwareSwitch" Grid.Column="1" OnContent="" OffContent=""
+                                  IsCheckedChanged="OnHardwareChanged" VerticalAlignment="Center" />
+                  </Grid>
+                </StackPanel>
               </StackPanel>
             </Border>
             <TextBlock x:Name="ResolutionHint" Classes="footnote" />

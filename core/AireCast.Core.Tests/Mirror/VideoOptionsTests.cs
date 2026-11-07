@@ -65,6 +65,41 @@ public class VideoOptionsTests
     }
 
     [Fact]
+    public void HardwareEncodersKeepTheStreamTheReceiverNeeds()
+    {
+        foreach (HardwareCodec codec in HardwareCodec.Candidates())
+        {
+            string[] arguments = VideoEncoder.Arguments(["-i", "x"], VideoOptions.Create(), null, codec);
+
+            Assert.Equal("0", arguments[Array.IndexOf(arguments, "-bf") + 1]);
+            Assert.Equal("1", arguments[Array.IndexOf(arguments, "-aud") + 1]);
+            Assert.Equal("dump_extra=freq=keyframe", arguments[Array.IndexOf(arguments, "-bsf:v") + 1]);
+            Assert.Equal("12.4M", arguments[Array.IndexOf(arguments, "-maxrate") + 1]);
+            Assert.Equal("7.4M", arguments[Array.IndexOf(arguments, "-b:v") + 1]);
+            Assert.DoesNotContain("libx264", arguments);
+        }
+    }
+
+    [Fact]
+    public void WithoutHardwareTheEncoderIsX264()
+    {
+        EncoderChoice choice = EncoderSelector.Choose("ffmpeg", VideoOptions.Create() with { UseHardware = false });
+
+        Assert.Equal("x264", choice.Name);
+        Assert.Contains("libx264", choice.Arguments(["-i", "x"], VideoOptions.Create()));
+    }
+
+    [Fact]
+    public void AMissingFfmpegDoesNotBreakTheChoice()
+    {
+        const string Missing = "/ruta/que/no/existe/ffmpeg";
+
+        EncoderChoice choice = EncoderSelector.Choose(Missing, new VideoOptions(1280, 720, 30));
+
+        Assert.True(choice.Hardware is null ? choice.Ffmpeg == Missing : choice.Ffmpeg != Missing);
+    }
+
+    [Fact]
     public void ReadsPrimaryMonitor()
     {
         const string Xrandr = "HDMI-1 connected 1920x1080+1366+0 (normal)\neDP-1 connected primary 1366x768+0+0 (normal)\n";

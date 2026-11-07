@@ -18,6 +18,8 @@ internal sealed class DesktopPlatform : IMirrorPlatform
 
     public string? ShareNote => null;
 
+    public bool CanChooseEncoder => true;
+
     public IDisposable BeginDiscovery() => new NoLock();
 
     public async Task MirrorAsync(AirPlayDevice device, Credentials? credentials, VideoOptions options, NetworkProfile network,

@@ -168,6 +168,8 @@ public partial class MainView : UserControl
         FpsBox.SelectedItem = settings.Fps;
         NetworkBox.ItemsSource = NetworkProfile.Choices.Select(profile => NetworkNames[profile.Name]).ToList();
         NetworkBox.SelectedItem = NetworkNames[settings.Network];
+        HardwareRow.IsVisible = _platform.CanChooseEncoder;
+        HardwareSwitch.IsChecked = settings.Hardware;
         UpdateNetwork(null);
         _loadingSettings = false;
     }
@@ -206,11 +208,17 @@ public partial class MainView : UserControl
 
     private string SelectedNetwork => NetworkNames.First(entry => entry.Value == (string?)NetworkBox.SelectedItem).Key;
 
-    private void OnSettingChanged(object? sender, SelectionChangedEventArgs e)
+    private bool UseHardware => HardwareSwitch.IsChecked != false;
+
+    private void OnSettingChanged(object? sender, SelectionChangedEventArgs e) => SaveSettings();
+
+    private void OnHardwareChanged(object? sender, RoutedEventArgs e) => SaveSettings();
+
+    private void SaveSettings()
     {
         if (_loadingSettings || ResolutionBox.SelectedItem is null || FpsBox.SelectedItem is null || NetworkBox.SelectedItem is null)
             return;
-        new AppSettings(SelectedResolution, SelectedFps, SelectedNetwork).Save();
+        new AppSettings(SelectedResolution, SelectedFps, SelectedNetwork, UseHardware).Save();
         if (Mirroring)
             SetStatus("Los cambios se aplicarán la próxima vez que compartas la pantalla.");
     }
@@ -399,7 +407,7 @@ public partial class MainView : UserControl
             return;
         }
 
-        VideoOptions options = VideoOptions.Create(SelectedResolution, SelectedFps);
+        VideoOptions options = VideoOptions.Create(SelectedResolution, SelectedFps) with { UseHardware = UseHardware };
         NetworkProfile network = row.Device.UsesHomeKit ? NetworkProfile.Parse(SelectedNetwork) : NetworkProfile.Normal;
         ShareButton.IsEnabled = false;
         NowPlaying.IsVisible = true;

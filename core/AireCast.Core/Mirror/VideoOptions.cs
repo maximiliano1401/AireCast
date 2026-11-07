@@ -28,6 +28,9 @@ public sealed record VideoOptions(int? Width, int? Height, int Fps)
     /// </summary>
     public static readonly IReadOnlyList<string> LegacyResolutions = ["720p", "1080p"];
 
+    /// <summary>Usa el codificador por hardware si este equipo tiene uno. Si no, o si es false, x264.</summary>
+    public bool UseHardware { get; init; } = true;
+
     public bool FitsLegacyReceiver => Width is <= 1920 && Height is <= 1080;
 
     /// <exception cref="ArgumentException">Esa resolución o esos fps no existen.</exception>
