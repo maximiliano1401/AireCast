@@ -23,7 +23,7 @@ namespace AireCast.Ui;
 public sealed record DeviceRow(AirPlayDevice Device, bool Paired)
 {
     public string Name => Device.Name.Replace(' ', ' ');
-    public string Details => $"{Device.Model} · {Device.Address}";
+    public string Details => HasState ? $"{Device.Model} · {State}" : Device.Model;
     public string State => !Device.SupportsVideo ? "Solo audio" : !Device.NeedsPairing ? "" : Paired ? "Emparejado" : "PIN";
     public bool HasState => State.Length > 0;
     public bool Ready => Device.SupportsVideo && (!Device.NeedsPairing || Paired);
@@ -97,6 +97,8 @@ public partial class MainView : UserControl
         }
         if (_topLevel?.InputPane is { } pane)
             pane.StateChanged += OnInputPaneChanged;
+        if (_topLevel is not null)
+            _topLevel.BackRequested += OnBackRequested;
         UpdateSafeArea();
     }
 
@@ -107,6 +109,8 @@ public partial class MainView : UserControl
             insets.SafeAreaChanged -= OnSafeAreaChanged;
         if (_topLevel?.InputPane is { } pane)
             pane.StateChanged -= OnInputPaneChanged;
+        if (_topLevel is not null)
+            _topLevel.BackRequested -= OnBackRequested;
         _topLevel = null;
     }
 
@@ -120,6 +124,31 @@ public partial class MainView : UserControl
         Thickness safe = _topLevel?.InsetsManager?.SafeAreaPadding ?? default;
         double keyboard = _topLevel?.InputPane is { State: InputPaneState.Open } pane ? pane.OccludedRect.Height : 0;
         Padding = new Thickness(safe.Left, safe.Top, safe.Right, Math.Max(safe.Bottom, keyboard));
+    }
+
+    // --- Pantallas -----------------------------------------------------------------------------
+
+    private void OnOpenSettings(object? sender, RoutedEventArgs e) => SettingsPage.IsVisible = true;
+
+    private void OnCloseSettings(object? sender, RoutedEventArgs e) => SettingsPage.IsVisible = false;
+
+    private void OnOpenLog(object? sender, RoutedEventArgs e) => LogPage.IsVisible = true;
+
+    private void OnCloseLog(object? sender, RoutedEventArgs e) => LogPage.IsVisible = false;
+
+    /// <summary>
+    /// El botón atrás de Android vuelve a la pantalla anterior. Con un duplicado en marcha tampoco cierra
+    /// la app: la pantalla nueva no sabría de él y no quedaría botón de «Detener».
+    /// </summary>
+    private void OnBackRequested(object? sender, RoutedEventArgs e)
+    {
+        if (LogPage.IsVisible)
+            LogPage.IsVisible = false;
+        else if (SettingsPage.IsVisible)
+            SettingsPage.IsVisible = false;
+        else if (!Mirroring)
+            return;
+        e.Handled = true;
     }
 
     // --- Ajustes ------------------------------------------------------------------------------
@@ -198,7 +227,6 @@ public partial class MainView : UserControl
     private async Task ScanAsync()
     {
         ScanButton.IsEnabled = false;
-        ScanButton.Content = "Buscando…";
         EmptyText.Text = "Asegúrate de que la TV está encendida y en la misma red Wi-Fi.";
         SetStatus("Buscando dispositivos en tu red…");
         try
@@ -222,13 +250,11 @@ public partial class MainView : UserControl
             SetStatus($"No se pudo buscar dispositivos: {ex.Message}");
         }
         ScanButton.IsEnabled = true;
-        ScanButton.Content = "Buscar";
     }
 
     private async void OnDeviceSelected(object? sender, SelectionChangedEventArgs e)
     {
         DeviceRow? row = Selected;
-        TargetText.Text = row is null ? "Elige un dispositivo" : row.Ready ? row.Name : $"{row.Name} · sin emparejar";
         ShareButton.IsEnabled = row is { Ready: true } && !Mirroring;
         UpdateResolutions(row);
         UpdateNetwork(row);
@@ -356,8 +382,8 @@ public partial class MainView : UserControl
         NetworkProfile network = row.Device.UsesHomeKit ? NetworkProfile.Parse(SelectedNetwork) : NetworkProfile.Normal;
         ShareButton.IsEnabled = false;
         NowPlaying.IsVisible = true;
-        NowPlayingTarget.Text = $"en «{row.Name}»";
-        SetStatus($"Conectando con «{row.Name}»…");
+        NowPlayingTarget.Text = $"Conectando con {row.Name}…";
+        SetStatus("");
         _mirror = new CancellationTokenSource();
         _mirrorTask = RunMirrorAsync(row, credentials, options, network, _mirror);
     }
@@ -371,7 +397,7 @@ public partial class MainView : UserControl
             {
                 AskCode = AskCodeAsync,
                 Log = LogFromAnyThread,
-                Started = () => Dispatcher.UIThread.Post(() => SetStatus($"Compartiendo la pantalla en «{row.Name}».")),
+                Started = () => Dispatcher.UIThread.Post(() => NowPlayingTarget.Text = $"Compartiendo en {row.Name}"),
             };
             await Task.Run(() => _platform.MirrorAsync(row.Device, credentials, options, network, callbacks, stop.Token));
             result = "La transmisión ha terminado.";
