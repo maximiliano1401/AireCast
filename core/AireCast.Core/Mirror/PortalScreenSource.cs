@@ -39,6 +39,8 @@ public sealed class PortalScreenSource(VideoOptions requested, string tokenFile)
 
     public VideoOptions Options { get; private set; } = requested;
 
+    public string Name => "portal de Wayland";
+
     public async Task OpenAsync(CancellationToken ct)
     {
         _connection = new DBusConnection(DBusAddress.Session ?? throw new IOException("No hay sesión D-Bus"));
@@ -129,13 +131,14 @@ public sealed class PortalScreenSource(VideoOptions requested, string tokenFile)
         string caps = $"video/x-raw,format=I420,width={width},height={height},framerate={fps}/1,pixel-aspect-ratio=1/1";
         // GNOME solo envía fotogramas cuando cambia la pantalla: keepalive-time repite el último para
         // que el flujo no se detenga con la imagen quieta. Se escala antes de convertir el color,
-        // que así trabaja con menos píxeles.
+        // que así trabaja con menos píxeles. videorate numera bien los fotogramas pero los suelta a
+        // ráfagas: sync=true los entrega a su hora, y sin descartar ninguno aunque lleguen tarde.
         string[] gst =
         [
             "gst-launch-1.0", "-q", "pipewiresrc", $"fd={Text(fd)}", $"path={Text(_node)}", "do-timestamp=true",
             $"keepalive-time={Text(1000 / Options.Fps)}",
             "!", "videoscale", "n-threads=0", "!", "videoconvert", "n-threads=0", "!", "videorate",
-            "!", caps, "!", "fdsink", "fd=1", "sync=false",
+            "!", caps, "!", "fdsink", "fd=1", "sync=true", "max-lateness=-1", "qos=false",
         ];
         string[] input = ["-f", "rawvideo", "-pix_fmt", "yuv420p", "-video_size", $"{width}x{height}", "-framerate", fps, "-i", "pipe:0"];
 

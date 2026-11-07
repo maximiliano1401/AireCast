@@ -110,6 +110,7 @@ static async Task<int> Capture(string[] args)
     using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(seconds));
     long frames = await VideoEncoder.RunAsync(source.Encoder(Option(args, "--ffmpeg", MirrorController.FindFfmpeg())), sink, ct: stop.Token);
     Console.WriteLine($"{frames} fotogramas en {seconds} s ({frames / seconds:F1} fps), {sink.Size.Width}x{sink.Size.Height}, nivel {sink.Level}, {sink.Bytes * 8 / seconds / 1e6:F1} Mb/s");
+    Console.WriteLine(sink.Pacing());
     return 0;
 }
 
@@ -171,6 +172,10 @@ internal sealed class CountingSink : IVideoSink
     public double Level { get; private set; }
     public long Bytes { get; private set; }
 
+    private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
+    private readonly List<double> _intervals = [];
+    private readonly List<int> _sizes = [];
+
     public Task SendCodecAsync(byte[] sps, byte[] pps, CancellationToken ct)
     {
         Size = H264.SpsSize(sps);
@@ -180,7 +185,22 @@ internal sealed class CountingSink : IVideoSink
 
     public Task SendFrameAsync(IReadOnlyList<byte[]> nals, CancellationToken ct)
     {
-        Bytes += nals.Sum(nal => nal.Length);
+        int size = nals.Sum(nal => nal.Length);
+        Bytes += size;
+        _sizes.Add(size);
+        _intervals.Add(_clock.Elapsed.TotalMilliseconds);
+        _clock.Restart();
         return Task.CompletedTask;
+    }
+
+    /// <summary>La regularidad de los fotogramas: lo que se nota como tirones aunque los fps sean buenos.</summary>
+    public string Pacing()
+    {
+        if (_intervals.Count < 3)
+            return "sin fotogramas suficientes";
+        var intervals = _intervals.Skip(1).Order().ToList();
+        double Percentile(double p) => intervals[(int)((intervals.Count - 1) * p)];
+        return string.Create(CultureInfo.InvariantCulture,
+            $"intervalo p50 {Percentile(0.5):F1} ms, p95 {Percentile(0.95):F1} ms, p99 {Percentile(0.99):F1} ms, máx. {intervals[^1]:F1} ms; fotograma medio {_sizes.Average() / 1024:F1} KB, máx. {_sizes.Max() / 1024.0:F1} KB");
     }
 }

@@ -11,6 +11,9 @@ public interface IScreenSource : IAsyncDisposable
     /// <summary>Resolución y fps definitivos; en nativa, algunas fuentes solo los conocen al abrirse.</summary>
     VideoOptions Options { get; }
 
+    /// <summary>Cómo se captura, para el registro. Se sabe del todo tras llamar a <see cref="Encoder"/>.</summary>
+    string Name { get; }
+
     /// <summary>Prepara la captura: en Wayland el escritorio puede pedir permiso.</summary>
     Task OpenAsync(CancellationToken ct);
 
@@ -18,9 +21,11 @@ public interface IScreenSource : IAsyncDisposable
 }
 
 /// <summary>Una captura que FFmpeg hace por sí mismo: gdigrab, x11grab o la imagen de prueba.</summary>
-public sealed class FfmpegScreenSource(VideoOptions options, string[] input) : IScreenSource
+public sealed class FfmpegScreenSource(string name, VideoOptions options, string[] input) : IScreenSource
 {
     public VideoOptions Options => options;
+
+    public string Name => name;
 
     public Task OpenAsync(CancellationToken ct) => Task.CompletedTask;
 
@@ -30,6 +35,73 @@ public sealed class FfmpegScreenSource(VideoOptions options, string[] input) : I
         foreach (string argument in VideoEncoder.Arguments(input, options))
             info.ArgumentList.Add(argument);
         return info;
+    }
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}
+
+/// <summary>
+/// Windows: ddagrab copia la pantalla desde la GPU y sigue el ritmo de 60 fps, que gdigrab no alcanza y
+/// además hace parpadear el cursor. Captura la pantalla principal. Si este FFmpeg o este equipo no lo
+/// admiten (escritorio remoto, Windows antiguo), se usa gdigrab.
+/// </summary>
+public sealed class WindowsScreenSource(VideoOptions options) : IScreenSource
+{
+    private const string DownloadFrames = "hwdownload,format=bgra";
+    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(5);
+
+    public VideoOptions Options => options;
+
+    public string Name { get; private set; } = "gdigrab";
+
+    public static string[] DesktopDuplicationInput(int fps) =>
+        ["-f", "lavfi", "-i", string.Create(CultureInfo.InvariantCulture, $"ddagrab=output_idx=0:framerate={fps}:draw_mouse=1")];
+
+    public Task OpenAsync(CancellationToken ct) => Task.CompletedTask;
+
+    public ProcessStartInfo Encoder(string ffmpeg)
+    {
+        var info = new ProcessStartInfo(ffmpeg);
+        bool duplication = CanDuplicateDesktop(ffmpeg);
+        Name = duplication ? "ddagrab" : "gdigrab";
+        string rate = options.Fps.ToString(CultureInfo.InvariantCulture);
+        string[] arguments = duplication
+            ? VideoEncoder.Arguments(DesktopDuplicationInput(options.Fps), options, DownloadFrames)
+            : VideoEncoder.Arguments(["-f", "gdigrab", "-framerate", rate, "-i", "desktop"], options);
+        foreach (string argument in arguments)
+            info.ArgumentList.Add(argument);
+        return info;
+    }
+
+    /// <summary>Captura un fotograma de prueba: la única forma fiable de saber si ddagrab funciona aquí.</summary>
+    private bool CanDuplicateDesktop(string ffmpeg)
+    {
+        var probe = new ProcessStartInfo(ffmpeg)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        string[] arguments = ["-hide_banner", "-loglevel", "error", "-nostdin", .. DesktopDuplicationInput(options.Fps),
+            "-vf", DownloadFrames, "-frames:v", "1", "-f", "null", "-"];
+        foreach (string argument in arguments)
+            probe.ArgumentList.Add(argument);
+        try
+        {
+            using Process process = Process.Start(probe) ?? throw new IOException("No se pudo iniciar FFmpeg");
+            process.ErrorDataReceived += (_, _) => { };
+            process.OutputDataReceived += (_, _) => { };
+            process.BeginErrorReadLine();
+            process.BeginOutputReadLine();
+            if (process.WaitForExit(ProbeTimeout))
+                return process.ExitCode == 0;
+            process.Kill(entireProcessTree: true);
+            return false;
+        }
+        catch (Exception ex) when (ex is IOException or System.ComponentModel.Win32Exception)
+        {
+            return false;
+        }
     }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
@@ -47,12 +119,12 @@ public static partial class ScreenCapture
     {
         string rate = options.Fps.ToString(CultureInfo.InvariantCulture);
         if (OperatingSystem.IsWindows())
-            return new FfmpegScreenSource(options, ["-f", "gdigrab", "-framerate", rate, "-i", "desktop"]);
+            return new WindowsScreenSource(options);
         if (OperatingSystem.IsLinux())
         {
             return Environment.GetEnvironmentVariable("XDG_SESSION_TYPE") == "wayland"
                 ? new PortalScreenSource(options, PortalTokenFile)
-                : new FfmpegScreenSource(options, X11Arguments(rate));
+                : new FfmpegScreenSource("x11grab", options, X11Arguments(rate));
         }
         throw new PlatformNotSupportedException("Sistema sin captura de pantalla");
     }
@@ -61,7 +133,7 @@ public static partial class ScreenCapture
     public static IScreenSource TestPattern(VideoOptions options)
     {
         int width = options.Width ?? 1920, height = options.Height ?? 1080;
-        return new FfmpegScreenSource(options,
+        return new FfmpegScreenSource("imagen de prueba", options,
             ["-re", "-f", "lavfi", "-i", string.Create(CultureInfo.InvariantCulture, $"testsrc2=size={width}x{height}:rate={options.Fps}")]);
     }
 

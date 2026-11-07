@@ -48,9 +48,10 @@ public static class MirrorController
         if (network is { AudioMarginMs: > 0 })
             callbacks.Log?.Invoke(DescribeNetwork(credentials, session));
 
-        callbacks.Log?.Invoke($"Duplicando en «{device.Name}» a {source.Options.Fps} fps");
+        System.Diagnostics.ProcessStartInfo encoder = source.Encoder(ffmpeg);
+        callbacks.Log?.Invoke($"Duplicando en «{device.Name}» a {source.Options.Fps} fps con {source.Name}");
         callbacks.Started?.Invoke();
-        long frames = await VideoEncoder.RunAsync(source.Encoder(ffmpeg), session,
+        long frames = await VideoEncoder.RunAsync(encoder, session,
             sent => callbacks.Log?.Invoke($"{sent} fotogramas enviados"), source.Options.Fps * 2, ct);
         if (session.ResentAudioPackets > 0)
             callbacks.Log?.Invoke($"Paquetes de audio reenviados: {session.ResentAudioPackets}");

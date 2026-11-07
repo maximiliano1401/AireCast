@@ -46,6 +46,25 @@ public class VideoOptionsTests
     }
 
     [Fact]
+    public void AsksForLowDelayBeforeTheInput()
+    {
+        string[] arguments = VideoEncoder.Arguments(["-i", "x"], VideoOptions.Create());
+
+        Assert.True(Array.IndexOf(arguments, "-fflags") < Array.IndexOf(arguments, "-i"));
+        Assert.Equal("nobuffer", arguments[Array.IndexOf(arguments, "-fflags") + 1]);
+    }
+
+    [Fact]
+    public void DownloadsDesktopDuplicationFramesBeforeScaling()
+    {
+        VideoOptions options = VideoOptions.Create("720p", 60);
+        string[] arguments = VideoEncoder.Arguments(WindowsScreenSource.DesktopDuplicationInput(60), options, "hwdownload,format=bgra");
+
+        Assert.Equal("ddagrab=output_idx=0:framerate=60:draw_mouse=1", arguments[Array.IndexOf(arguments, "-i") + 1]);
+        Assert.Equal($"hwdownload,format=bgra,{options.ScaleFilter}", arguments[Array.IndexOf(arguments, "-vf") + 1]);
+    }
+
+    [Fact]
     public void ReadsPrimaryMonitor()
     {
         const string Xrandr = "HDMI-1 connected 1920x1080+1366+0 (normal)\neDP-1 connected primary 1366x768+0+0 (normal)\n";
