@@ -25,14 +25,16 @@ public sealed class FfmpegScreenSource(string name, VideoOptions options, string
 {
     public VideoOptions Options => options;
 
-    public string Name { get; private set; } = name;
+    private string? _encoder;
+
+    public string Name => _encoder is null ? name : $"{name} y {_encoder}";
 
     public Task OpenAsync(CancellationToken ct) => Task.CompletedTask;
 
     public ProcessStartInfo Encoder(string ffmpeg)
     {
         EncoderChoice encoder = EncoderSelector.Choose(ffmpeg, options);
-        Name = $"{name} y {encoder.Name}";
+        _encoder = encoder.Name;
         var info = new ProcessStartInfo(encoder.Ffmpeg);
         foreach (string argument in encoder.Arguments(input, options))
             info.ArgumentList.Add(argument);

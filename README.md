@@ -2,7 +2,7 @@
 
 # AireCast
 
-Duplica la pantalla de tu PC en televisores y receptores AirPlay, con audio. Funciona en Windows y Linux; Android llegará pronto.
+Duplica la pantalla de tu PC o tu teléfono en televisores y receptores AirPlay, con audio. Funciona en Windows, Linux y Android.
 
 Probado en Windows 11, Fedora y Linux Mint, con Apple TV 3, Apple TV 4K y Roku.
 
@@ -16,14 +16,16 @@ Descarga el instalador para tu sistema desde [Releases](../../releases):
 | Fedora | `airecast-<versión>.x86_64.rpm` |
 | Ubuntu, Mint, Debian | `airecast_<versión>_amd64.deb` |
 | Otras distribuciones | `AireCast-<versión>-x86_64.AppImage` |
+| Android 10 o superior | `AireCast-<versión>.apk` |
 
 Si no aparecen dispositivos, revisa el [cortafuegos](docs/TECNICO.md#cortafuegos).
 
 ## Usar
 
-1. Abre AireCast y elige tu TV. La primera vez, escribe el PIN que muestra.
-2. Elige la resolución y los fotogramas por segundo.
-3. Pulsa **Compartir pantalla**.
+1. Abre AireCast y elige tu TV. Si pide PIN, escribe el que muestra.
+2. Pulsa **Compartir pantalla**.
+
+La resolución, los fotogramas por segundo y la codificación con la GPU están en **Ajustes** (el engranaje).
 
 ## Desarrollar
 

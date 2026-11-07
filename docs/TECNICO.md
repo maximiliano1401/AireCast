@@ -67,3 +67,11 @@ La opción **Red** de la app (o `--network unstable` en la consola) sube ese mar
 - **Se ha comprobado con el receptor simulado** (que se anuncia el margen mayor y que el fotograma lleva la hora retrasada), pero la sincronía con una TV real depende de que respete esa hora. Si con «Inestable» ves la imagen adelantada o atrasada respecto al sonido, el ajuste está en `UnstableAudioMarginMs`.
 
 Aparte, el envío del audio pide a Windows un temporizador de 1 ms mientras dura la sesión (`TimerResolution`). Sin él, el hilo despierta cada ~15,6 ms y los paquetes de 8 ms salen de dos en dos; con él despierta cada ~2,6 ms y salen uno a uno. No añade retraso.
+
+## Codificación
+
+Al compartir, AireCast prueba los codificadores por hardware de FFmpeg y usa el primero que funcione: VAAPI y NVENC en Linux; NVENC, AMF y Quick Sync en Windows. Si ninguno funciona, usa x264. El método elegido aparece en **Ajustes → Registro técnico**, y **Codificar con la GPU** obliga a usar x264.
+
+En Linux, el FFmpeg incluido en los paquetes es estático y no accede a la GPU: hace falta un `ffmpeg` del sistema y el driver VAAPI. En Fedora con gráfica AMD, ese driver es `mesa-va-drivers-freeworld`, de RPM Fusion.
+
+El hardware gasta menos CPU pero más red que x264: su bitrate medio es el 60 % del tope.

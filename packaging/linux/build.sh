@@ -2,6 +2,7 @@
 # Genera los paquetes de Linux en dist/packages/: .deb, .rpm y AppImage. Incluyen la app y un FFmpeg
 # estático con libx264 y x11grab. Necesita el SDK de .NET 10, curl, ar y rpmbuild (rpm-build en Fedora,
 # rpm en Debian y Ubuntu). Lo demás (GStreamer, pactl…) viene del sistema: el .deb y el .rpm lo declaran.
+# El FFmpeg del sistema es opcional: el estático no accede a la GPU, así que sin él se codifica con x264.
 #
 # Con --no-appimage no genera el AppImage, que descarga y ejecuta appimagetool.
 set -euo pipefail
@@ -58,6 +59,7 @@ Version: $VERSION
 Architecture: amd64
 Maintainer: maximiliano1401 <bmdp149@hotmail.com>
 Depends: pulseaudio-utils, x11-xserver-utils, xdg-desktop-portal, gstreamer1.0-tools, gstreamer1.0-plugins-base, gstreamer1.0-pipewire, libice6, libsm6, libx11-6, libfontconfig1
+Recommends: ffmpeg
 Section: video
 Priority: optional
 Homepage: https://github.com/maximiliano1401/AireCast
@@ -83,6 +85,7 @@ Summary: $SUMMARY
 License: GPL-3.0-or-later
 URL: https://github.com/maximiliano1401/AireCast
 AutoReqProv: no
+Recommends: /usr/bin/ffmpeg
 Requires: pulseaudio-utils, xrandr, xdg-desktop-portal, gstreamer1, gstreamer1-plugins-base, pipewire-gstreamer, libICE, libSM, libX11, fontconfig
 %global debug_package %{nil}
 %global __strip /bin/true

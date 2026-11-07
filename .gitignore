@@ -24,3 +24,5 @@ Desktop.ini
 .vscode/
 .idea/
 .env
+*.keystore
+*.jks
