@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- La interfaz de AireCast, igual en el escritorio y en Android. Lo propio de cada sistema va en IMirrorPlatform. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <!-- Enlaces compilados: los de reflexión se romperían al recortar el ejecutable. -->
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.5" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.5" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="..\..\assets\logo-256.png" Link="logo-256.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AireCast.Core\AireCast.Core.csproj" />
+  </ItemGroup>
+</Project>

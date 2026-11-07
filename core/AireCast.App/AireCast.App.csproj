@@ -5,23 +5,15 @@
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\..\assets\logo.ico</ApplicationIcon>
-    <!-- Enlaces compilados: los de reflexión se romperían al recortar el ejecutable. -->
-    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.5" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.5" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.5" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.5" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <AvaloniaResource Include="..\..\assets\logo-256.png" Link="logo-256.png" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\AireCast.Core\AireCast.Core.csproj" />
+    <ProjectReference Include="..\AireCast.Ui\AireCast.Ui.csproj" />
   </ItemGroup>
 
   <!-- audiocap.exe, la captura de audio de Windows, junto al ejecutable. -->

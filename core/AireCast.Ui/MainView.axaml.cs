@@ -10,12 +10,14 @@ using System.Threading.Tasks;
 using AireCast.Core.Discovery;
 using AireCast.Core.Mirror;
 using AireCast.Core.Pairing;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Platform;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 
-namespace AireCast.App;
+namespace AireCast.Ui;
 
 /// <summary>Una fila de la lista de dispositivos.</summary>
 public sealed record DeviceRow(AirPlayDevice Device, bool Paired)
@@ -27,7 +29,8 @@ public sealed record DeviceRow(AirPlayDevice Device, bool Paired)
     public bool Ready => Device.SupportsVideo && (!Device.NeedsPairing || Paired);
 }
 
-public partial class MainWindow : Window
+/// <summary>La pantalla de AireCast: la misma en el escritorio y en Android.</summary>
+public partial class MainView : UserControl
 {
     private static readonly TimeSpan ScanTime = TimeSpan.FromSeconds(5);
     private static readonly Dictionary<string, string> ResolutionNames = new()
@@ -52,30 +55,80 @@ public partial class MainWindow : Window
     private const string AllResolutionsHint =
         "«Nativa» usa la de esta pantalla, sin escalar: es la más nítida. Por encima de 1080p (también la nativa si tu pantalla es mayor) hace falta un receptor que lo admita, como el Apple TV 4K.";
     private const string LegacyResolutionsHint = "Este Apple TV admite hasta 1080p.";
+    private const string ScaledResolutionsHint = "Más resolución se ve más nítido, pero necesita una red mejor.";
 
+    private readonly IMirrorPlatform _platform = App.Platform;
     private readonly CancellationTokenSource _closing = new();
+    private TopLevel? _topLevel;
     private AirPlayPairing? _pairing;
     private CancellationTokenSource? _mirror;
     private Task? _mirrorTask;
     private TaskCompletionSource<string>? _code;
     private bool _loadingSettings;
 
-    public MainWindow()
+    public MainView()
     {
         InitializeComponent();
+        ShareNote.Text = _platform.ShareNote;
+        ShareNote.IsVisible = _platform.ShareNote is not null;
         LoadSettings();
-        Opened += async (_, _) => await ScanAsync();
+        Loaded += async (_, _) => await ScanAsync();
+        // Android da el área segura antes de conocer la escala de la pantalla, y no avisa cuando la corrige.
+        SizeChanged += (_, _) => UpdateSafeArea();
     }
 
     private DeviceRow? Selected => DeviceList.SelectedItem as DeviceRow;
 
-    private bool Mirroring => _mirrorTask is { IsCompleted: false };
+    /// <summary>Si hay un duplicado en marcha.</summary>
+    public bool Mirroring => _mirrorTask is { IsCompleted: false };
+
+    private string ResolutionsHint => _platform.Resolutions.Contains("native") ? AllResolutionsHint : ScaledResolutionsHint;
+
+    // --- Barras del sistema y teclado ---------------------------------------------------------
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        _topLevel = TopLevel.GetTopLevel(this);
+        if (_topLevel?.InsetsManager is { } insets)
+        {
+            insets.DisplayEdgeToEdgePreference = true;
+            insets.SafeAreaChanged += OnSafeAreaChanged;
+        }
+        if (_topLevel?.InputPane is { } pane)
+            pane.StateChanged += OnInputPaneChanged;
+        UpdateSafeArea();
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+        if (_topLevel?.InsetsManager is { } insets)
+            insets.SafeAreaChanged -= OnSafeAreaChanged;
+        if (_topLevel?.InputPane is { } pane)
+            pane.StateChanged -= OnInputPaneChanged;
+        _topLevel = null;
+    }
+
+    private void OnSafeAreaChanged(object? sender, SafeAreaChangedArgs e) => UpdateSafeArea();
+
+    private void OnInputPaneChanged(object? sender, InputPaneStateEventArgs e) => UpdateSafeArea();
+
+    /// <summary>Deja fuera las barras del sistema y el teclado en pantalla, que se dibujan encima de la app.</summary>
+    private void UpdateSafeArea()
+    {
+        Thickness safe = _topLevel?.InsetsManager?.SafeAreaPadding ?? default;
+        double keyboard = _topLevel?.InputPane is { State: InputPaneState.Open } pane ? pane.OccludedRect.Height : 0;
+        Padding = new Thickness(safe.Left, safe.Top, safe.Right, Math.Max(safe.Bottom, keyboard));
+    }
+
+    // --- Ajustes ------------------------------------------------------------------------------
 
     private void LoadSettings()
     {
         _loadingSettings = true;
         AppSettings settings = AppSettings.Load();
-        ShowResolutions(ResolutionNames.Keys, settings.Resolution, AllResolutionsHint);
+        ShowResolutions(_platform.Resolutions, settings.Resolution, ResolutionsHint);
         FpsBox.ItemsSource = VideoOptions.FpsChoices.ToList();
         FpsBox.SelectedItem = settings.Fps;
         NetworkBox.ItemsSource = NetworkProfile.Choices.Select(profile => NetworkNames[profile.Name]).ToList();
@@ -106,9 +159,9 @@ public partial class MainWindow : Window
         _loadingSettings = true;
         string saved = AppSettings.Load().Resolution;
         if (row is { Device.UsesHomeKit: false })
-            ShowResolutions(VideoOptions.LegacyResolutions, saved, LegacyResolutionsHint);
+            ShowResolutions(_platform.Resolutions.Intersect(VideoOptions.LegacyResolutions), saved, LegacyResolutionsHint);
         else
-            ShowResolutions(ResolutionNames.Keys, saved, AllResolutionsHint);
+            ShowResolutions(_platform.Resolutions, saved, ResolutionsHint);
         _loadingSettings = false;
     }
 
@@ -151,7 +204,9 @@ public partial class MainWindow : Window
         try
         {
             string? selected = Selected?.Device.Id;
-            var devices = await AirPlayBrowser.DiscoverAsync(ScanTime, _closing.Token);
+            IReadOnlyList<AirPlayDevice> devices;
+            using (_platform.BeginDiscovery())
+                devices = await AirPlayBrowser.DiscoverAsync(ScanTime, _closing.Token);
             var rows = devices.Select(device => new DeviceRow(device, CredentialStore.Find(device.Identifiers) is not null)).ToList();
             DeviceList.ItemsSource = rows;
             DeviceList.SelectedItem = rows.FirstOrDefault(row => row.Device.Id == selected);
@@ -302,7 +357,7 @@ public partial class MainWindow : Window
         ShareButton.IsEnabled = false;
         NowPlaying.IsVisible = true;
         NowPlayingTarget.Text = $"en «{row.Name}»";
-        SetStatus($"Compartiendo la pantalla en «{row.Name}»…");
+        SetStatus($"Conectando con «{row.Name}»…");
         _mirror = new CancellationTokenSource();
         _mirrorTask = RunMirrorAsync(row, credentials, options, network, _mirror);
     }
@@ -318,11 +373,7 @@ public partial class MainWindow : Window
                 Log = LogFromAnyThread,
                 Started = () => Dispatcher.UIThread.Post(() => SetStatus($"Compartiendo la pantalla en «{row.Name}».")),
             };
-            await Task.Run(async () =>
-            {
-                await using IScreenSource source = ScreenCapture.Create(options);
-                await MirrorController.RunAsync(row.Device, credentials, source, MirrorController.FindFfmpeg(), callbacks, network: network, ct: stop.Token);
-            });
+            await Task.Run(() => _platform.MirrorAsync(row.Device, credentials, options, network, callbacks, stop.Token));
             result = "La transmisión ha terminado.";
         }
         catch (OperationCanceledException)
@@ -348,18 +399,13 @@ public partial class MainWindow : Window
         _mirror?.Cancel();
     }
 
-    protected override async void OnClosing(WindowClosingEventArgs e)
+    /// <summary>Detiene lo que esté en marcha. Termina tras el TEARDOWN y tras restaurar el audio del equipo.</summary>
+    public Task ShutdownAsync()
     {
-        base.OnClosing(e);
+        _closing.Cancel();
         if (!Mirroring)
-        {
-            _closing.Cancel();
-            return;
-        }
-        // Se espera al TEARDOWN y a que se restaure el audio del PC, y después se cierra.
-        e.Cancel = true;
+            return Task.CompletedTask;
         _mirror?.Cancel();
-        await _mirrorTask!;
-        Close();
+        return _mirrorTask!;
     }
 }

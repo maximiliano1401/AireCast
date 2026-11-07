@@ -3,4 +3,5 @@
   <Project Path="AireCast.Cli/AireCast.Cli.csproj" />
   <Project Path="AireCast.Core.Tests/AireCast.Core.Tests.csproj" />
   <Project Path="AireCast.Core/AireCast.Core.csproj" />
+  <Project Path="AireCast.Ui/AireCast.Ui.csproj" />
 </Solution>

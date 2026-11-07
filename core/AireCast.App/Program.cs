@@ -14,9 +14,10 @@ internal static class Program
         // La captura de audio de Linux es este mismo ejecutable, como proceso aparte (ver LinuxAudioCap).
         if (args.FirstOrDefault() == LinuxAudioCap.Argument)
             return LinuxAudioCap.Run(args[1..]);
+        Ui.App.Platform = new DesktopPlatform();
         return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 
     public static AppBuilder BuildAvaloniaApp() =>
-        AppBuilder.Configure<App>().UsePlatformDetect().WithInterFont().LogToTrace();
+        AppBuilder.Configure<Ui.App>().UsePlatformDetect().WithInterFont().LogToTrace();
 }

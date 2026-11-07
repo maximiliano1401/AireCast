@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using AireCast.Core.Mirror;
 
-namespace AireCast.App;
+namespace AireCast.Ui;
 
 /// <summary>La resolución, los fps y el tipo de red elegidos, que se recuerdan en este equipo.</summary>
 internal sealed record AppSettings(string Resolution, int Fps, string Network)

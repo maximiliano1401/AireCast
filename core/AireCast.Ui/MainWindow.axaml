@@ -1,0 +1,8 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:AireCast.Ui"
+        x:Class="AireCast.Ui.MainWindow"
+        Title="AireCast" Icon="avares://AireCast.Ui/logo-256.png" Width="620" Height="720" MinWidth="440" MinHeight="520"
+        Background="#070B14">
+  <ui:MainView x:Name="View" />
+</Window>

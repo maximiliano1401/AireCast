@@ -14,6 +14,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Avalonia.Android" Version="12.1.5" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\AireCast.Core\AireCast.Core.csproj" />
+    <ProjectReference Include="..\AireCast.Ui\AireCast.Ui.csproj" />
   </ItemGroup>
 </Project>
