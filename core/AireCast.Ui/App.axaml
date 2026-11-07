@@ -3,347 +3,140 @@
              x:Class="AireCast.Ui.App"
              RequestedThemeVariant="Dark">
   <Application.Resources>
-    <SolidColorBrush x:Key="TextPrimary" Color="#EAF0FA" />
-    <SolidColorBrush x:Key="TextSecondary" Color="#9AABC4" />
-    <SolidColorBrush x:Key="TextMuted" Color="#71829C" />
-
-    <SolidColorBrush x:Key="Surface" Color="#0B1320" />
-    <SolidColorBrush x:Key="SurfaceRaised" Color="#0F1929" />
-    <SolidColorBrush x:Key="Line" Color="#1B2942" />
-    <SolidColorBrush x:Key="LineStrong" Color="#26395A" />
-
-    <SolidColorBrush x:Key="Brand" Color="#0C4469" />
-    <SolidColorBrush x:Key="BrandLine" Color="#1A557D" />
-
+    <SolidColorBrush x:Key="TextPrimary" Color="#F2F4F8" />
+    <SolidColorBrush x:Key="TextSecondary" Color="#8E99AB" />
+    <SolidColorBrush x:Key="Surface" Color="#121824" />
+    <SolidColorBrush x:Key="SurfacePressed" Color="#1C2433" />
+    <SolidColorBrush x:Key="Line" Color="#232C3B" />
+    <SolidColorBrush x:Key="Tint" Color="#5AA9DC" />
     <SolidColorBrush x:Key="Accent" Color="#E86A20" />
-    <SolidColorBrush x:Key="AccentHover" Color="#F27A33" />
     <SolidColorBrush x:Key="AccentPressed" Color="#C95A16" />
-    <SolidColorBrush x:Key="Danger" Color="#FF9C8F" />
+    <SolidColorBrush x:Key="Danger" Color="#FF6B5E" />
   </Application.Resources>
 
   <Application.Styles>
     <FluentTheme>
       <FluentTheme.Palettes>
-        <ColorPaletteResources x:Key="Dark"
-                               Accent="#2F6F9E"
-                               RegionColor="#070B14"
-                               BaseHigh="#EAF0FA"
-                               BaseMediumHigh="#C4D0E3"
-                               BaseMedium="#93A3BC"
-                               BaseMediumLow="#71829C"
-                               BaseLow="#22314A"
-                               AltHigh="#070B14"
-                               AltMediumHigh="#0B1320"
-                               AltMedium="#080F1A"
-                               AltMediumLow="#070B14"
-                               AltLow="#070B14"
-                               ChromeHigh="#2A3B58"
-                               ChromeMedium="#16223A"
-                               ChromeMediumLow="#101A2C"
-                               ChromeLow="#0B1320"
-                               ChromeAltLow="#22314A"
-                               ChromeBlackHigh="#000000"
-                               ChromeBlackMedium="#05090F"
-                               ChromeBlackLow="#03060B"
-                               ChromeDisabledHigh="#182236"
-                               ChromeDisabledLow="#5B6B84"
-                               ChromeGray="#7F90AA"
-                               ChromeWhite="#FFFFFF"
-                               ListLow="#71829C"
-                               ListMedium="#9AABC4"
-                               ErrorText="#FF9C8F" />
+        <ColorPaletteResources x:Key="Dark" Accent="#2F6F9E" RegionColor="#070B14"
+                               BaseHigh="#F2F4F8" BaseMedium="#8E99AB" BaseLow="#232C3B"
+                               AltHigh="#070B14" ChromeMedium="#1C2433" ChromeLow="#121824" />
       </FluentTheme.Palettes>
     </FluentTheme>
 
-    <!-- Tipografía -->
-    <Style Selector="TextBlock.h1">
-      <Setter Property="FontSize" Value="17" />
+    <!-- Texto -->
+    <Style Selector="TextBlock.title">
+      <Setter Property="FontSize" Value="26" />
       <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="LetterSpacing" Value="0.2" />
-      <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
     </Style>
-    <Style Selector="TextBlock.section">
-      <Setter Property="FontSize" Value="10.5" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="LetterSpacing" Value="1.4" />
-      <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
-    </Style>
-    <Style Selector="TextBlock.label">
-      <Setter Property="FontSize" Value="12.5" />
-      <Setter Property="FontWeight" Value="SemiBold" />
+    <Style Selector="TextBlock.group">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="Medium" />
       <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+      <Setter Property="Margin" Value="16,0,16,6" />
+    </Style>
+    <Style Selector="TextBlock.footnote">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="LineHeight" Value="17" />
+      <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="Margin" Value="16,6,16,0" />
+    </Style>
+    <Style Selector="TextBlock.row">
+      <Setter Property="FontSize" Value="15" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
-    <Style Selector="TextBlock.meta">
-      <Setter Property="FontSize" Value="12" />
-      <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
-    </Style>
-    <Style Selector="TextBlock.hint">
-      <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="LineHeight" Value="17" />
-      <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
-    </Style>
-    <Style Selector="TextBlock.empty">
-      <Setter Property="FontSize" Value="12.5" />
-      <Setter Property="LineHeight" Value="18" />
-      <Setter Property="Foreground" Value="#8C9DB6" />
-    </Style>
 
-    <!-- Superficies -->
-    <Style Selector="Border.card">
+    <!-- Grupos de filas, como en los ajustes de iOS -->
+    <Style Selector="Border.group">
       <Setter Property="Background" Value="{StaticResource Surface}" />
-      <Setter Property="BorderBrush" Value="{StaticResource Line}" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="16" />
-      <Setter Property="Padding" Value="14" />
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="ClipToBounds" Value="True" />
     </Style>
-    <Style Selector="Border.card.accent">
-      <Setter Property="Background" Value="#0A1B2A" />
-      <Setter Property="BorderBrush" Value="{StaticResource BrandLine}" />
-    </Style>
-    <Style Selector="Border.inset">
-      <Setter Property="Background" Value="#080E19" />
-      <Setter Property="BorderBrush" Value="#16233A" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="12" />
-      <Setter Property="Padding" Value="14" />
-    </Style>
-    <Style Selector="Border.target">
-      <Setter Property="Background" Value="{StaticResource Surface}" />
-      <Setter Property="BorderBrush" Value="{StaticResource Line}" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="12" />
-      <Setter Property="Padding" Value="12,10" />
-    </Style>
-    <Style Selector="Border.live">
-      <Setter Property="Background" Value="#0E1726" />
-      <Setter Property="BorderBrush" Value="{StaticResource LineStrong}" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="16" />
-      <Setter Property="Padding" Value="12" />
-    </Style>
-    <Style Selector="Border.tag">
-      <Setter Property="Background" Value="#102A3F" />
-      <Setter Property="BorderBrush" Value="#1D4563" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="99" />
-      <Setter Property="Padding" Value="8,3" />
-    </Style>
-    <Style Selector="Border.rowIcon">
-      <Setter Property="Background" Value="#0F2436" />
-      <Setter Property="CornerRadius" Value="10" />
+    <Style Selector="Border.separator">
+      <Setter Property="Height" Value="1" />
+      <Setter Property="Background" Value="{StaticResource Line}" />
+      <Setter Property="Margin" Value="16,0,0,0" />
     </Style>
 
     <!-- Botones -->
     <Style Selector="Button">
-      <Setter Property="MinHeight" Value="48" />
-      <Setter Property="Padding" Value="18,0" />
-      <Setter Property="CornerRadius" Value="12" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BorderBrush" Value="{StaticResource LineStrong}" />
-      <Setter Property="Background" Value="{StaticResource SurfaceRaised}" />
-      <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
-      <Setter Property="FontSize" Value="14" />
+      <Setter Property="CornerRadius" Value="14" />
       <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="MinHeight" Value="48" />
       <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
-      <Setter Property="Cursor" Value="Hand" />
     </Style>
-    <Style Selector="Button /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="CornerRadius" Value="12" />
-    </Style>
-    <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#152238" />
-      <Setter Property="BorderBrush" Value="#31496F" />
-    </Style>
-    <Style Selector="Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#0E1929" />
-      <Setter Property="BorderBrush" Value="#263A5A" />
-    </Style>
-    <Style Selector="Button:focus /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="BorderBrush" Value="#4C8FBC" />
-    </Style>
-    <Style Selector="Button:disabled /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#0C1420" />
-      <Setter Property="BorderBrush" Value="#172136" />
-      <Setter Property="TextElement.Foreground" Value="#6A7B93" />
-    </Style>
-    <Style Selector="Button:disabled">
-      <Setter Property="Foreground" Value="#6A7B93" />
-      <Setter Property="Cursor" Value="Arrow" />
-    </Style>
-
-    <Style Selector="Button.ghost">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="#22314A" />
-      <Setter Property="Foreground" Value="#C9D5E6" />
-    </Style>
-    <Style Selector="Button.ghost:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#142235" />
-      <Setter Property="BorderBrush" Value="#35507A" />
-    </Style>
-    <Style Selector="Button.ghost:pressed /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#0C1524" />
-    </Style>
-
-    <Style Selector="Button.accent">
-      <Setter Property="Background" Value="{StaticResource Brand}" />
-      <Setter Property="BorderBrush" Value="{StaticResource BrandLine}" />
-      <Setter Property="Foreground" Value="#F2F8FE" />
-    </Style>
-    <Style Selector="Button.accent:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#10527D" />
-      <Setter Property="BorderBrush" Value="#22658F" />
-    </Style>
-    <Style Selector="Button.accent:pressed /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#083A5B" />
-      <Setter Property="BorderBrush" Value="#16527A" />
-    </Style>
-    <Style Selector="Button.accent:focus /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="BorderBrush" Value="#8FC9E9" />
-    </Style>
-    <Style Selector="Button.accent:disabled /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#10202F" />
-      <Setter Property="BorderBrush" Value="#1B3448" />
-      <Setter Property="TextElement.Foreground" Value="#67798F" />
-    </Style>
-    <Style Selector="Button.accent:disabled">
-      <Setter Property="Foreground" Value="#67798F" />
-    </Style>
-
-    <Style Selector="Button.primary">
-      <Setter Property="Background" Value="{StaticResource Accent}" />
-      <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
-      <Setter Property="Foreground" Value="#08111C" />
+    <Style Selector="Button.primary, Button.stop">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="MinHeight" Value="54" />
+      <Setter Property="FontSize" Value="16" />
     </Style>
     <Style Selector="Button.primary /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="TextElement.Foreground" Value="#08111C" />
+      <Setter Property="Background" Value="{StaticResource Accent}" />
+      <Setter Property="Foreground" Value="#FFFFFF" />
     </Style>
     <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="{StaticResource AccentHover}" />
-      <Setter Property="BorderBrush" Value="{StaticResource AccentHover}" />
-      <Setter Property="TextElement.Foreground" Value="#08111C" />
+      <Setter Property="Background" Value="#F27A33" />
+      <Setter Property="Foreground" Value="#FFFFFF" />
     </Style>
     <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Background" Value="{StaticResource AccentPressed}" />
-      <Setter Property="BorderBrush" Value="{StaticResource AccentPressed}" />
-      <Setter Property="TextElement.Foreground" Value="#08111C" />
-    </Style>
-    <Style Selector="Button.primary:focus /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="BorderBrush" Value="#FFD9C6" />
+      <Setter Property="Foreground" Value="#FFFFFF" />
     </Style>
     <Style Selector="Button.primary:disabled /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#111A28" />
-      <Setter Property="BorderBrush" Value="#1E2A3E" />
-      <Setter Property="TextElement.Foreground" Value="#72839B" />
+      <Setter Property="Background" Value="{StaticResource Surface}" />
+      <Setter Property="Foreground" Value="#5D6778" />
     </Style>
-    <Style Selector="Button.primary:disabled">
-      <Setter Property="Foreground" Value="#72839B" />
-    </Style>
-
-    <Style Selector="Button.stop">
-      <Setter Property="Background" Value="#0D1522" />
-      <Setter Property="BorderBrush" Value="#4A2A33" />
+    <Style Selector="Button.stop /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource Surface}" />
       <Setter Property="Foreground" Value="{StaticResource Danger}" />
     </Style>
-    <Style Selector="Button.stop:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#23141A" />
-      <Setter Property="BorderBrush" Value="#6E3744" />
-      <Setter Property="TextElement.Foreground" Value="#FFB3A8" />
-    </Style>
-    <Style Selector="Button.stop:pressed /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#1A0F13" />
-      <Setter Property="BorderBrush" Value="#5A2C37" />
+    <Style Selector="Button.stop:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.stop:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource SurfacePressed}" />
+      <Setter Property="Foreground" Value="{StaticResource Danger}" />
     </Style>
 
-    <!-- Campos de texto -->
-    <Style Selector="TextBox">
-      <Setter Property="MinHeight" Value="48" />
-      <Setter Property="Padding" Value="12,0" />
-      <Setter Property="CornerRadius" Value="10" />
-      <Setter Property="Background" Value="#0A111E" />
-      <Setter Property="BorderBrush" Value="#22314B" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
-      <Setter Property="FontSize" Value="14" />
-      <Setter Property="CaretBrush" Value="{StaticResource TextPrimary}" />
-      <Setter Property="SelectionBrush" Value="#1D5C86" />
-      <Setter Property="VerticalContentAlignment" Value="Center" />
+    <!-- Iconos de la barra superior -->
+    <Style Selector="Button.icon">
+      <Setter Property="Width" Value="48" />
+      <Setter Property="Height" Value="48" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="CornerRadius" Value="24" />
     </Style>
-    <Style Selector="TextBox /template/ Border#PART_BorderElement">
-      <Setter Property="CornerRadius" Value="10" />
+    <Style Selector="Button.icon /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{StaticResource Tint}" />
     </Style>
-    <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
-      <Setter Property="BorderBrush" Value="#2E4366" />
+    <Style Selector="Button.icon:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.icon:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource Surface}" />
+      <Setter Property="Foreground" Value="{StaticResource Tint}" />
     </Style>
-    <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
-      <Setter Property="BorderBrush" Value="#3F86B8" />
+    <Style Selector="Button.icon:disabled /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
     </Style>
-    <Style Selector="TextBox /template/ TextBlock#PART_Watermark">
-      <Setter Property="Foreground" Value="#52637C" />
-    </Style>
-    <Style Selector="TextBox:disabled">
-      <Setter Property="Opacity" Value="0.55" />
+    <Style Selector="Button#ScanButton:disabled PathIcon">
+      <Style.Animations>
+        <Animation Duration="0:0:1" IterationCount="Infinite">
+          <KeyFrame Cue="0%"><Setter Property="RotateTransform.Angle" Value="0" /></KeyFrame>
+          <KeyFrame Cue="100%"><Setter Property="RotateTransform.Angle" Value="360" /></KeyFrame>
+        </Animation>
+      </Style.Animations>
     </Style>
 
-    <!-- Desplegables -->
-    <Style Selector="ComboBox">
-      <Setter Property="MinHeight" Value="48" />
-      <Setter Property="Padding" Value="12,0" />
-      <Setter Property="CornerRadius" Value="10" />
-      <Setter Property="Background" Value="#0A111E" />
-      <Setter Property="BorderBrush" Value="#22314B" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
-      <Setter Property="FontSize" Value="14" />
+    <!-- Fila que abre otra pantalla -->
+    <Style Selector="Button.row">
       <Setter Property="HorizontalAlignment" Value="Stretch" />
-      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="Padding" Value="16,0,12,0" />
+      <Setter Property="FontWeight" Value="Normal" />
     </Style>
-    <Style Selector="ComboBox:pointerover /template/ Border#Background">
-      <Setter Property="Background" Value="#0D1626" />
-      <Setter Property="BorderBrush" Value="#2E4366" />
+    <Style Selector="Button.row /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
     </Style>
-    <Style Selector="ComboBox:focus /template/ Border#Background">
-      <Setter Property="BorderBrush" Value="#3F86B8" />
-    </Style>
-    <Style Selector="ComboBox:disabled /template/ Border#Background">
-      <Setter Property="Background" Value="#0B111C" />
-      <Setter Property="BorderBrush" Value="#172337" />
-    </Style>
-    <Style Selector="ComboBox:disabled /template/ Border#Border">
-      <Setter Property="BorderBrush" Value="#172337" />
-    </Style>
-    <Style Selector="ComboBox:disabled /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="TextElement.Foreground" Value="#6E7F97" />
-    </Style>
-    <Style Selector="ComboBox:disabled /template/ PathIcon#DropDownGlyph">
-      <Setter Property="Foreground" Value="#52637C" />
-    </Style>
-    <Style Selector="ComboBox:disabled">
-      <Setter Property="Foreground" Value="#6E7F97" />
-      <Setter Property="Opacity" Value="1" />
-    </Style>
-    <Style Selector="ComboBox /template/ Border#PopupBorder">
-      <Setter Property="Background" Value="#0C1422" />
-      <Setter Property="BorderBrush" Value="#263955" />
-      <Setter Property="CornerRadius" Value="12" />
-      <Setter Property="Padding" Value="4" />
-    </Style>
-    <Style Selector="ComboBoxItem">
-      <Setter Property="MinHeight" Value="48" />
-      <Setter Property="Padding" Value="12,10" />
-      <Setter Property="Margin" Value="4,1" />
-      <Setter Property="CornerRadius" Value="8" />
-      <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
-    </Style>
-    <Style Selector="ComboBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#14243A" />
-    </Style>
-    <Style Selector="ComboBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#12334C" />
-    </Style>
-    <Style Selector="ComboBoxItem:selected">
-      <Setter Property="Foreground" Value="#FFFFFF" />
+    <Style Selector="Button.row:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.row:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource SurfacePressed}" />
     </Style>
 
     <!-- Lista de televisores -->
@@ -351,86 +144,57 @@
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="Padding" Value="0" />
-      <Setter Property="MinHeight" Value="0" />
     </Style>
     <Style Selector="ListBoxItem">
-      <Setter Property="MinHeight" Value="64" />
-      <Setter Property="Padding" Value="10,8" />
-      <Setter Property="Margin" Value="0,2" />
-      <Setter Property="CornerRadius" Value="12" />
-      <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+      <Setter Property="Padding" Value="16,11,14,11" />
+      <Setter Property="MinHeight" Value="60" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
     </Style>
     <Style Selector="ListBoxItem /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Background" Value="Transparent" />
     </Style>
-    <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#111C2E" />
-    </Style>
-    <Style Selector="ListBoxItem:pressed /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#0D1727" />
+    <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter, ListBoxItem:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource SurfacePressed}" />
     </Style>
     <Style Selector="ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#0D2A40" />
-      <Setter Property="BorderBrush" Value="#1D4E70" />
-      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Background" Value="Transparent" />
     </Style>
-    <Style Selector="ListBoxItem:selected">
-      <Setter Property="Foreground" Value="#FFFFFF" />
+    <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource SurfacePressed}" />
     </Style>
-    <Style Selector="ListBoxItem:selected TextBlock.meta">
-      <Setter Property="Foreground" Value="#B9CDE0" />
+    <Style Selector="ListBoxItem PathIcon.check">
+      <Setter Property="IsVisible" Value="False" />
     </Style>
-    <Style Selector="ListBoxItem:selected Border.rowIcon">
-      <Setter Property="Background" Value="#123A56" />
+    <Style Selector="ListBoxItem:selected PathIcon.check">
+      <Setter Property="IsVisible" Value="True" />
     </Style>
 
-    <!-- Ajustes avanzados -->
-    <Style Selector="Expander">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="Padding" Value="0" />
-      <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
-      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-    </Style>
-    <Style Selector="ToggleButton#ExpanderHeader">
+    <!-- Campos -->
+    <Style Selector="TextBox">
       <Setter Property="MinHeight" Value="48" />
-      <Setter Property="Padding" Value="12,0" />
-      <Setter Property="CornerRadius" Value="16" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBox.log">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="VerticalContentAlignment" Value="Top" />
+      <Setter Property="Padding" Value="14,12" />
+    </Style>
+    <Style Selector="TextBox.log /template/ Border#PART_BorderElement">
       <Setter Property="Background" Value="{StaticResource Surface}" />
-      <Setter Property="BorderBrush" Value="{StaticResource Line}" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
-      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-    </Style>
-    <Style Selector="ToggleButton#ExpanderHeader /template/ Border#ToggleButtonBackground">
-      <Setter Property="CornerRadius" Value="16" />
-    </Style>
-    <Style Selector="Expander:expanded /template/ Border#ExpanderContent">
-      <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
     </Style>
-    <Style Selector="ToggleButton#ExpanderHeader:pointerover /template/ Border#ToggleButtonBackground">
-      <Setter Property="Background" Value="#101B2D" />
-      <Setter Property="BorderBrush" Value="#2A3F60" />
-      <Setter Property="CornerRadius" Value="16" />
-    </Style>
-    <Style Selector="ToggleButton#ExpanderHeader:pressed /template/ Border#ToggleButtonBackground">
-      <Setter Property="Background" Value="#0D1727" />
-      <Setter Property="BorderBrush" Value="#263A5A" />
-      <Setter Property="CornerRadius" Value="16" />
-    </Style>
-    <Style Selector="ToggleButton#ExpanderHeader:pointerover /template/ Border#ExpandCollapseChevronBorder">
+    <Style Selector="ComboBox.row">
+      <Setter Property="MinHeight" Value="48" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="BorderThickness" Value="0" />
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="Opacity" Value="1" />
+      <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+      <Setter Property="FontSize" Value="15" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
-    <Style Selector="ToggleButton#ExpanderHeader:focus /template/ Border#ToggleButtonBackground">
-      <Setter Property="BorderBrush" Value="#4C8FBC" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="16" />
-    </Style>
-    <Style Selector="ToggleButton#ExpanderHeader:pressed /template/ Border#ExpandCollapseChevronBorder">
+    <Style Selector="ComboBox.row:pointerover /template/ Border#Background, ComboBox.row:focus /template/ Border#Background">
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="Opacity" Value="1" />
     </Style>
   </Application.Styles>
 </Application>

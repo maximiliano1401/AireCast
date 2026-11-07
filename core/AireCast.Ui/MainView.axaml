@@ -4,187 +4,155 @@
              x:Class="AireCast.Ui.MainView"
              x:DataType="ui:MainView"
              Background="#070B14"
-             Foreground="{StaticResource TextPrimary}"
-             FontFamily="Inter">
-  <Grid RowDefinitions="Auto,*,Auto,Auto">
+             Foreground="{StaticResource TextPrimary}">
+  <Panel MaxWidth="560">
 
-    <!-- Cabecera -->
-    <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="16,16,16,14">
-      <Image Source="avares://AireCast.Ui/logo-256.png" Width="40" Height="40"
-             Stretch="Uniform" VerticalAlignment="Center" />
-      <StackPanel Grid.Column="1" Margin="11,0,12,0" Spacing="1" VerticalAlignment="Center">
-        <TextBlock Text="AireCast" Classes="h1" />
-        <TextBlock Text="Tu pantalla en la TV" Classes="hint" TextTrimming="CharacterEllipsis" />
+    <!-- Pantalla principal -->
+    <Grid RowDefinitions="Auto,*,Auto" Margin="16,8,16,16">
+      <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,0,0,14">
+        <Image Source="avares://AireCast.Ui/logo-256.png" Width="30" Height="30" VerticalAlignment="Center" />
+        <TextBlock Grid.Column="1" Text="AireCast" Classes="title" Margin="10,0" VerticalAlignment="Center" />
+        <Button x:Name="ScanButton" Grid.Column="2" Classes="icon" Click="OnScan" ToolTip.Tip="Buscar">
+          <PathIcon Width="22" Height="22" Data="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z" />
+        </Button>
+        <Button Grid.Column="3" Classes="icon" Click="OnOpenSettings" ToolTip.Tip="Ajustes">
+          <PathIcon Width="22" Height="22" Data="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z" />
+        </Button>
+      </Grid>
+
+      <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Spacing="16">
+          <StackPanel>
+            <TextBlock Text="Televisores" Classes="group" />
+            <Border Classes="group">
+              <StackPanel>
+                <ListBox x:Name="DeviceList" SelectionChanged="OnDeviceSelected"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="ui:DeviceRow">
+                      <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Spacing="2" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding Name}" Classes="row" TextTrimming="CharacterEllipsis" />
+                          <TextBlock Text="{Binding Details}" FontSize="13" Foreground="{StaticResource TextSecondary}"
+                                     TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <PathIcon Grid.Column="1" Classes="check" Width="20" Height="20" Margin="10,0,0,0"
+                                  Foreground="{StaticResource Tint}" VerticalAlignment="Center"
+                                  Data="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z" />
+                      </Grid>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+                <TextBlock x:Name="EmptyText" Classes="footnote" TextAlignment="Center" Margin="16,18"
+                           IsVisible="{Binding #EmptyText.Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+          <Border x:Name="PairPanel" Classes="group" Padding="16" IsVisible="False">
+            <StackPanel Spacing="10">
+              <TextBlock x:Name="PairTitle" Classes="row" FontWeight="SemiBold" TextWrapping="Wrap" />
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                <TextBox x:Name="PinBox" MaxLength="4" PlaceholderText="PIN de la TV" HorizontalContentAlignment="Center"
+                         TextInputOptions.ContentType="Digits" KeyDown="OnPinKey" />
+                <Button x:Name="PinButton" Grid.Column="1" Classes="primary" MinHeight="48" FontSize="15" Padding="18,0"
+                        Content="Emparejar" Click="OnPair" />
+              </Grid>
+            </StackPanel>
+          </Border>
+
+          <Border x:Name="CodePanel" Classes="group" Padding="16" IsVisible="False">
+            <StackPanel Spacing="10">
+              <TextBlock x:Name="CodeText" Classes="row" TextWrapping="Wrap" />
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                <TextBox x:Name="CodeBox" MaxLength="4" PlaceholderText="Código" HorizontalContentAlignment="Center"
+                         TextInputOptions.ContentType="Digits" KeyDown="OnCodeKey" />
+                <Button Grid.Column="1" Classes="primary" MinHeight="48" FontSize="15" Padding="18,0"
+                        Content="Conectar" Click="OnCode" />
+              </Grid>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+
+      <StackPanel Grid.Row="2" Spacing="10" Margin="0,12,0,0">
+        <TextBlock x:Name="StatusText" Classes="footnote" Margin="8,0" TextAlignment="Center"
+                   IsVisible="{Binding !#NowPlaying.IsVisible}" />
+        <StackPanel x:Name="NowPlaying" Spacing="10" IsVisible="False">
+          <TextBlock x:Name="NowPlayingTarget" Classes="row" TextAlignment="Center" TextTrimming="CharacterEllipsis" />
+          <Button Classes="stop" Content="Detener" Click="OnStop" />
+        </StackPanel>
+        <Button x:Name="ShareButton" Classes="primary" Content="Compartir pantalla" IsEnabled="False" Click="OnShare"
+                IsVisible="{Binding !#NowPlaying.IsVisible}" />
       </StackPanel>
-      <Button x:Name="ScanButton" Grid.Column="2" Classes="ghost" Content="Buscar"
-              Click="OnScan" VerticalAlignment="Center" />
     </Grid>
 
-    <!-- Contenido desplazable -->
-    <ScrollViewer Grid.Row="1"
-                  HorizontalScrollBarVisibility="Disabled"
-                  VerticalScrollBarVisibility="Auto">
-      <StackPanel Margin="16,0,16,4" Spacing="12">
-
-        <!-- Televisores -->
-        <Border Classes="card">
-          <StackPanel Spacing="4">
-            <TextBlock Text="DISPOSITIVOS" Classes="section" Margin="4,0,4,6" />
-            <ListBox x:Name="DeviceList" SelectionChanged="OnDeviceSelected"
-                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-              <ListBox.ItemTemplate>
-                <DataTemplate x:DataType="ui:DeviceRow">
-                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
-                    <Border Classes="rowIcon" Width="38" Height="38" VerticalAlignment="Center">
-                      <PathIcon Width="18" Height="18" Foreground="#79A9CB"
-                                Data="M21,3H3C1.9,3 1,3.9 1,5V17C1,18.1 1.9,19 3,19H10V21H7V23H17V21H14V19H21C22.1,19 23,18.1 23,17V5C23,3.9 22.1,3 21,3M21,17H3V5H21V17Z" />
-                    </Border>
-                    <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                      <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold"
-                                 TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
-                      <TextBlock Text="{Binding Details}" Classes="meta" FontSize="11.5"
-                                 TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
-                    <Border Grid.Column="2" Classes="tag" VerticalAlignment="Center"
-                            IsVisible="{Binding HasState}">
-                      <TextBlock Text="{Binding State}" FontSize="10" FontWeight="SemiBold"
-                                 Foreground="#9FC8E6" />
-                    </Border>
-                  </Grid>
-                </DataTemplate>
-              </ListBox.ItemTemplate>
-            </ListBox>
-            <TextBlock x:Name="EmptyText" Classes="empty" TextWrapping="Wrap"
-                       TextAlignment="Center" Margin="8,8" />
-          </StackPanel>
-        </Border>
-
-        <!-- PIN -->
-        <Border x:Name="PairPanel" Classes="card accent" IsVisible="False">
-          <StackPanel Spacing="10">
-            <TextBlock x:Name="PairTitle" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
-            <TextBlock Text="Escribe el PIN de 4 dígitos que aparece en la TV." Classes="hint"
-                       TextWrapping="Wrap" />
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-              <TextBox x:Name="PinBox" MaxLength="4" PlaceholderText="••••"
-                       TextInputOptions.ContentType="Digits" KeyDown="OnPinKey"
-                       FontSize="20" FontWeight="SemiBold" LetterSpacing="6"
-                       HorizontalContentAlignment="Center" />
-              <Button x:Name="PinButton" Grid.Column="1" Classes="accent" Content="Emparejar"
-                      Click="OnPair" />
-            </Grid>
-          </StackPanel>
-        </Border>
-
-        <!-- Código en pantalla -->
-        <Border x:Name="CodePanel" Classes="card accent" IsVisible="False">
-          <StackPanel Spacing="10">
-            <TextBlock Text="Código en pantalla" FontSize="15" FontWeight="SemiBold" />
-            <TextBlock x:Name="CodeText" Classes="hint" TextWrapping="Wrap" />
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-              <TextBox x:Name="CodeBox" MaxLength="4" PlaceholderText="••••"
-                       TextInputOptions.ContentType="Digits" KeyDown="OnCodeKey"
-                       FontSize="20" FontWeight="SemiBold" LetterSpacing="6"
-                       HorizontalContentAlignment="Center" />
-              <Button Grid.Column="1" Classes="accent" Content="Conectar" Click="OnCode" />
-            </Grid>
-          </StackPanel>
-        </Border>
-
-        <!-- Destino y acción principal -->
-        <StackPanel Spacing="10" Margin="0,2,0,2">
-          <Border Classes="target">
-            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-              <PathIcon Width="18" Height="18" Foreground="#6E8FB2" VerticalAlignment="Center"
-                        Data="M21,3H3C1.9,3 1,3.9 1,5V17C1,18.1 1.9,19 3,19H10V21H7V23H17V21H14V19H21C22.1,19 23,18.1 23,17V5C23,3.9 22.1,3 21,3M21,17H3V5H21V17Z" />
-              <TextBlock x:Name="TargetText" Grid.Column="1" Classes="meta"
-                         Text="Elige un dispositivo" TextWrapping="NoWrap"
-                         TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-            </Grid>
-          </Border>
-
-          <Button x:Name="ShareButton" Classes="primary" IsEnabled="False" Click="OnShare"
-                  HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                  MinHeight="54" FontSize="15">
-            <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
-              <PathIcon Width="19" Height="19"
-                        Data="M1,18V21H4C4,19.34 2.66,18 1,18M1,14V16C3.76,16 6,18.24 6,21H8C8,17.13 4.87,14 1,14M1,10V12C5.97,12 10,16.03 10,21H12C12,14.92 7.08,10 1,10M21,3H3C1.9,3 1,3.9 1,5V8H3V5H21V19H14V21H21C22.1,21 23,20.1 23,19V5C23,3.9 22.1,3 21,3Z" />
-              <TextBlock Text="Compartir pantalla" FontWeight="SemiBold" VerticalAlignment="Center" />
-            </StackPanel>
-          </Button>
-
-          <TextBlock x:Name="ShareNote" Classes="hint" TextWrapping="Wrap" />
-        </StackPanel>
-
-        <!-- Ajustes avanzados -->
-        <Expander IsExpanded="False" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
-          <Expander.Header>
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <PathIcon Width="16" Height="16" Foreground="#7E93B4" VerticalAlignment="Center"
-                        Data="M3,17V19H9V17H3M3,5V7H13V5H3M13,21V19H21V17H13V15H11V21H13M7,9V11H3V13H7V15H9V9H7M21,13V11H11V13H21M15,9H17V7H21V5H17V3H15V9Z" />
-              <TextBlock Text="Ajustes avanzados" FontSize="13" FontWeight="SemiBold"
-                         Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
-            </StackPanel>
-          </Expander.Header>
-
-          <Border Classes="inset" Margin="0,8,0,0">
-            <StackPanel Spacing="14">
-              <StackPanel Spacing="6">
-                <TextBlock Text="Resolución" Classes="label" />
-                <ComboBox x:Name="ResolutionBox" SelectionChanged="OnSettingChanged"
-                          HorizontalAlignment="Stretch" />
-                <TextBlock x:Name="ResolutionHint" Classes="hint" TextWrapping="Wrap" />
-              </StackPanel>
-
-              <StackPanel Spacing="6">
-                <TextBlock Text="Fotogramas por segundo" Classes="label" TextWrapping="Wrap" />
-                <ComboBox x:Name="FpsBox" SelectionChanged="OnSettingChanged"
-                          HorizontalAlignment="Stretch" />
-              </StackPanel>
-
-              <StackPanel Spacing="6">
-                <TextBlock Text="Red" Classes="label" />
-                <ComboBox x:Name="NetworkBox" SelectionChanged="OnSettingChanged"
-                          HorizontalAlignment="Stretch" />
-                <TextBlock x:Name="NetworkHint" Classes="hint" TextWrapping="Wrap" />
-              </StackPanel>
-
-              <StackPanel Spacing="6">
-                <TextBlock Text="Registro técnico" Classes="label" />
-                <TextBox x:Name="LogBox" IsReadOnly="True" AcceptsReturn="True"
-                         TextWrapping="Wrap" Height="140" FontSize="11.5"
-                         Padding="12,10" VerticalContentAlignment="Top" />
-              </StackPanel>
-            </StackPanel>
-          </Border>
-        </Expander>
-      </StackPanel>
-    </ScrollViewer>
-
-    <!-- En emisión -->
-    <Border x:Name="NowPlaying" Grid.Row="2" Classes="live" Margin="16,10,16,0"
-            IsVisible="False">
-      <Grid ColumnDefinitions="3,*,Auto" ColumnSpacing="12">
-        <Border Background="{StaticResource Accent}" CornerRadius="2" />
-        <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
-          <StackPanel Orientation="Horizontal" Spacing="6">
-            <Ellipse Width="6" Height="6" Fill="{StaticResource Accent}" VerticalAlignment="Center" />
-            <TextBlock Text="COMPARTIENDO PANTALLA" FontSize="9.5" FontWeight="SemiBold"
-                       LetterSpacing="0.8" Foreground="#F0A276" />
-          </StackPanel>
-          <TextBlock x:Name="NowPlayingTarget" FontSize="14" FontWeight="SemiBold"
-                     TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
-        </StackPanel>
-        <Button Grid.Column="2" Classes="stop" Content="Detener" Click="OnStop"
-                VerticalAlignment="Center" />
+    <!-- Ajustes -->
+    <Grid x:Name="SettingsPage" RowDefinitions="Auto,*" Margin="16,8,16,16" Background="#070B14" IsVisible="False">
+      <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,14">
+        <TextBlock Text="Ajustes" Classes="title" VerticalAlignment="Center" />
+        <Button Grid.Column="1" Classes="icon" Click="OnCloseSettings" ToolTip.Tip="Cerrar">
+          <PathIcon Width="20" Height="20" Data="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
+        </Button>
       </Grid>
-    </Border>
 
-    <!-- Estado -->
-    <Border Grid.Row="3" Margin="16,10,16,14" Padding="2,9,0,0"
-            BorderBrush="#162337" BorderThickness="0,1,0,0">
-      <TextBlock x:Name="StatusText" FontSize="12" LineHeight="17"
-                 Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" />
-    </Border>
-  </Grid>
+      <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Spacing="22">
+          <StackPanel>
+            <TextBlock Text="Vídeo" Classes="group" />
+            <Border Classes="group">
+              <StackPanel>
+                <Grid ColumnDefinitions="*,Auto" Margin="16,0,4,0">
+                  <TextBlock Text="Resolución" Classes="row" />
+                  <ComboBox x:Name="ResolutionBox" Grid.Column="1" Classes="row" SelectionChanged="OnSettingChanged" />
+                </Grid>
+                <Border Classes="separator" />
+                <Grid ColumnDefinitions="*,Auto" Margin="16,0,4,0">
+                  <TextBlock Text="Fotogramas por segundo" Classes="row" TextTrimming="CharacterEllipsis" />
+                  <ComboBox x:Name="FpsBox" Grid.Column="1" Classes="row" SelectionChanged="OnSettingChanged" />
+                </Grid>
+              </StackPanel>
+            </Border>
+            <TextBlock x:Name="ResolutionHint" Classes="footnote" />
+            <TextBlock x:Name="ShareNote" Classes="footnote" />
+          </StackPanel>
+
+          <StackPanel>
+            <TextBlock Text="Red" Classes="group" />
+            <Border Classes="group">
+              <Grid ColumnDefinitions="*,Auto" Margin="16,0,4,0">
+                <TextBlock Text="Calidad de la red" Classes="row" />
+                <ComboBox x:Name="NetworkBox" Grid.Column="1" Classes="row" SelectionChanged="OnSettingChanged" />
+              </Grid>
+            </Border>
+            <TextBlock x:Name="NetworkHint" Classes="footnote" />
+          </StackPanel>
+
+          <StackPanel>
+            <TextBlock Text="Diagnóstico" Classes="group" />
+            <Border Classes="group">
+              <Button Classes="row" Click="OnOpenLog">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Text="Registro técnico" Classes="row" Foreground="{StaticResource TextPrimary}" />
+                  <PathIcon Grid.Column="1" Width="18" Height="18" Foreground="{StaticResource TextSecondary}"
+                            Data="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z" />
+                </Grid>
+              </Button>
+            </Border>
+          </StackPanel>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+
+    <!-- Registro técnico -->
+    <Grid x:Name="LogPage" RowDefinitions="Auto,*" Margin="16,8,16,16" Background="#070B14" IsVisible="False">
+      <Grid ColumnDefinitions="Auto,*" Margin="0,0,0,14">
+        <Button Classes="icon" Click="OnCloseLog" Margin="-12,0,0,0" ToolTip.Tip="Atrás">
+          <PathIcon Width="24" Height="24" Data="M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.58Z" />
+        </Button>
+        <TextBlock Grid.Column="1" Text="Registro técnico" Classes="title" VerticalAlignment="Center" />
+      </Grid>
+      <TextBox x:Name="LogBox" Grid.Row="1" Classes="log" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" />
+    </Grid>
+  </Panel>
 </UserControl>
