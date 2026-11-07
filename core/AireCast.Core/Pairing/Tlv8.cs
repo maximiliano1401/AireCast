@@ -12,6 +12,7 @@ public static class Tlv8
     public const byte SeqNo = 6;
     public const byte Error = 7;
     public const byte Signature = 10;
+    public const byte Flags = 0x13;
 
     public static byte[] Write(params (byte Tag, byte[] Value)[] items)
     {

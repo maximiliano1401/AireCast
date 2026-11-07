@@ -125,7 +125,7 @@ public sealed class MirrorSession : IVideoSink, IAsyncDisposable
         }
     }
 
-    private async Task SetupHomeKitAsync(HomeKitPairVerify verify, string name, CancellationToken ct)
+    private async Task SetupHomeKitAsync(ISessionKeys verify, string name, CancellationToken ct)
     {
         var session = await _client.SetupAsync(new()
         {

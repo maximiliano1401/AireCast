@@ -22,6 +22,6 @@ public interface IMirrorPlatform
     IDisposable BeginDiscovery();
 
     /// <summary>Duplica la pantalla hasta que se cancela o falla.</summary>
-    Task MirrorAsync(AirPlayDevice device, Credentials credentials, VideoOptions options, NetworkProfile network,
+    Task MirrorAsync(AirPlayDevice device, Credentials? credentials, VideoOptions options, NetworkProfile network,
         MirrorCallbacks callbacks, CancellationToken ct);
 }

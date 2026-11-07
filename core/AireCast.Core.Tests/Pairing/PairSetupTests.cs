@@ -42,6 +42,37 @@ public class PairSetupTests
     }
 
     [Fact]
+    public void TransientMessage1AsksForTransientPairing()
+    {
+        var message = Tlv8.Read(HomeKitTransientPairing.Message1());
+
+        Assert.Equal([0x10], message[Tlv8.Flags]);
+        Assert.Equal([1], message[Tlv8.SeqNo]);
+    }
+
+    [Fact]
+    public void TransientProofAndKeysMatch()
+    {
+        var pairing = new HomeKitTransientPairing(Bytes(SrpSeed));
+
+        var message3 = Tlv8.Read(pairing.Message3(Message2()));
+        pairing.Finish(Tlv8.Write((Tlv8.SeqNo, [4])));
+
+        Assert.Equal(Bytes(TransientProof), message3[Tlv8.Proof]);
+        Assert.Equal(Bytes(TransientControlKey), pairing.DeriveKey("Control-Salt", "Control-Write-Encryption-Key"));
+    }
+
+    [Fact]
+    public void TransientRejectionAsksForThePin()
+    {
+        var pairing = new HomeKitTransientPairing(Bytes(SrpSeed));
+        pairing.Message3(Message2());
+
+        Assert.Throws<PairingException>(() => pairing.Finish(Tlv8.Write((Tlv8.Error, [2]))));
+        Assert.Throws<InvalidOperationException>(() => pairing.DeriveKey("Control-Salt", "x"));
+    }
+
+    [Fact]
     public void LegacySrpAndKeyMatch()
     {
         var legacy = new LegacyPairSetup(Bytes(SrpSeed), Enumerable.Repeat((byte)0xAA, 8).ToArray());

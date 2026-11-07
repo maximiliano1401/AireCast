@@ -8,6 +8,7 @@ namespace AireCast.Core.Discovery;
 public sealed record AirPlayDevice
 {
     private const uint PinRequired = 0x8;
+    private const uint PasswordRequired = 0x80;
     private const uint LegacyPairing = 0x200;
     private const ulong UnifiedMediaControl = 1UL << 38;
     private const ulong CoreUtilsPairing = 1UL << 48;
@@ -31,6 +32,10 @@ public sealed record AirPlayDevice
 
     /// <summary>Hay que emparejarlo con PIN antes de usarlo.</summary>
     public bool NeedsPairing => (Flags & (PinRequired | LegacyPairing)) != 0;
+
+    /// <summary>Tiene una contraseña de AirPlay, elegida por su dueño: no es un PIN que muestre en pantalla.</summary>
+    public bool NeedsPassword => (Flags & PasswordRequired) != 0
+        || string.Equals(Properties.GetValueOrDefault("pw"), "true", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Se empareja con HomeKit (AirPlay 2); si no, con el emparejamiento legacy.</summary>
     public bool UsesHomeKit => (Features & (UnifiedMediaControl | CoreUtilsPairing)) != 0;

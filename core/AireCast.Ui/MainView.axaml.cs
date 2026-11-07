@@ -14,6 +14,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Platform;
 using Avalonia.Input;
+using Avalonia.Input.TextInput;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 
@@ -24,7 +25,9 @@ public sealed record DeviceRow(AirPlayDevice Device, bool Paired)
 {
     public string Name => Device.Name.Replace(' ', ' ');
     public string Details => HasState ? $"{Device.Model} · {State}" : Device.Model;
-    public string State => !Device.SupportsVideo ? "Solo audio" : !Device.NeedsPairing ? "" : Paired ? "Emparejado" : "PIN";
+    public string State => !Device.SupportsVideo ? "Solo audio"
+        : Device.NeedsPairing ? (Paired ? "Emparejado" : "PIN")
+        : Device.NeedsPassword ? "Contraseña" : "";
     public bool HasState => State.Length > 0;
     public bool Ready => Device.SupportsVideo && (!Device.NeedsPairing || Paired);
 }
@@ -32,6 +35,8 @@ public sealed record DeviceRow(AirPlayDevice Device, bool Paired)
 /// <summary>La pantalla de AireCast: la misma en el escritorio y en Android.</summary>
 public partial class MainView : UserControl
 {
+    private const int CodeLength = 4;
+    private const int PasswordMaxLength = 64;
     private static readonly TimeSpan ScanTime = TimeSpan.FromSeconds(5);
     private static readonly Dictionary<string, string> ResolutionNames = new()
     {
@@ -64,6 +69,7 @@ public partial class MainView : UserControl
     private CancellationTokenSource? _mirror;
     private Task? _mirrorTask;
     private TaskCompletionSource<string>? _code;
+    private bool _askingPassword;
     private bool _loadingSettings;
 
     public MainView()
@@ -333,12 +339,25 @@ public partial class MainView : UserControl
         _code = code;
         Dispatcher.UIThread.Post(() =>
         {
+            _askingPassword = Selected is { Device.NeedsPassword: true };
             CodePanel.IsVisible = true;
             CodeBox.Text = "";
-            CodeText.Text = retry
-                ? "El código no era correcto. Escribe el nuevo código de 4 dígitos que muestra la TV."
-                : "Mira la TV y escribe el código de 4 dígitos que aparece.";
-            SetStatus(retry ? "Código incorrecto. Escribe el nuevo código de la TV." : "Mira la TV y escribe el código que aparece.");
+            CodeBox.MaxLength = _askingPassword ? PasswordMaxLength : CodeLength;
+            CodeBox.PasswordChar = _askingPassword ? '•' : default;
+            CodeBox.PlaceholderText = _askingPassword ? "Contraseña" : "Código";
+            TextInputOptions.SetContentType(CodeBox, _askingPassword ? TextInputContentType.Password : TextInputContentType.Digits);
+            if (_askingPassword)
+            {
+                CodeText.Text = retry ? "Contraseña incorrecta. Vuelve a escribirla." : "Escribe la contraseña de AirPlay de esta TV.";
+                SetStatus(retry ? "Contraseña incorrecta." : "Esta TV pide contraseña.");
+            }
+            else
+            {
+                CodeText.Text = retry
+                    ? "El código no era correcto. Escribe el nuevo código de 4 dígitos que muestra la TV."
+                    : "Mira la TV y escribe el código de 4 dígitos que aparece.";
+                SetStatus(retry ? "Código incorrecto. Escribe el nuevo código de la TV." : "Mira la TV y escribe el código que aparece.");
+            }
             CodeBox.Focus();
         });
         return code.Task;
@@ -354,12 +373,14 @@ public partial class MainView : UserControl
 
     private void SendCode()
     {
-        string code = (CodeBox.Text ?? "").Trim();
-        if (code.Length != 4)
+        // Una contraseña se envía tal cual: los espacios pueden ser parte de ella.
+        string code = _askingPassword ? CodeBox.Text ?? "" : (CodeBox.Text ?? "").Trim();
+        if (_askingPassword ? code.Length == 0 : code.Length != CodeLength)
         {
-            SetStatus("Escribe el código de 4 dígitos que aparece en la TV.");
+            SetStatus(_askingPassword ? "Escribe la contraseña de la TV." : "Escribe el código de 4 dígitos que aparece en la TV.");
             return;
         }
+        CodeBox.Text = "";
         CodePanel.IsVisible = false;
         SetStatus("Conectando con la TV…");
         _code?.TrySetResult(code);
@@ -372,7 +393,7 @@ public partial class MainView : UserControl
         if (Selected is not { } row || Mirroring)
             return;
         Credentials? credentials = CredentialStore.Find(row.Device.Identifiers);
-        if (credentials is null)
+        if (credentials is null && row.Device.NeedsPairing)
         {
             SetStatus("Empareja la TV con su PIN para continuar.");
             return;
@@ -388,7 +409,7 @@ public partial class MainView : UserControl
         _mirrorTask = RunMirrorAsync(row, credentials, options, network, _mirror);
     }
 
-    private async Task RunMirrorAsync(DeviceRow row, Credentials credentials, VideoOptions options, NetworkProfile network, CancellationTokenSource stop)
+    private async Task RunMirrorAsync(DeviceRow row, Credentials? credentials, VideoOptions options, NetworkProfile network, CancellationTokenSource stop)
     {
         string result;
         try

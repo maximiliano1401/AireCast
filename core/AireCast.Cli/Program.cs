@@ -121,7 +121,7 @@ static async Task<int> Mirror(string target, string[] args)
     if (await Find(target) is not { } device)
         return 1;
     Credentials? credentials = CredentialStore.Find(device.Identifiers);
-    if (credentials is null)
+    if (credentials is null && device.NeedsPairing)
     {
         Console.Error.WriteLine($"No hay credenciales para «{device.Name}»: empareja primero con «airecast pair»");
         return 1;

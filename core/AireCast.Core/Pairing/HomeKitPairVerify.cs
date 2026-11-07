@@ -7,7 +7,7 @@ namespace AireCast.Core.Pairing;
 /// Pair-verify de HomeKit, en dos intercambios: M1 (nuestra clave efímera) -> M2 (la de la TV,
 /// firmada) y M3 (nuestra firma) -> M4. Después, el secreto compartido cifra el canal.
 /// </summary>
-public sealed class HomeKitPairVerify
+public sealed class HomeKitPairVerify : ISessionKeys
 {
     private readonly Credentials _credentials;
     private readonly byte[] _private;

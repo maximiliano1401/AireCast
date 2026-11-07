@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using AireCast.Core.Discovery;
 using AireCast.Core.Pairing;
 using AireCast.Core.Plist;
 
@@ -37,6 +38,8 @@ public sealed partial class AirPlayClient(AirPlayConnection connection)
 {
     private const int MaxCodeAttempts = 3;
     private const string DigestUser = "AirPlay";
+    private const string RegularPairing = "3";
+    private const string TransientPairing = "4";
 
     private const string RtspUserAgent = "AirPlay/550.10";
     private const string PairUserAgent = "AirPlay/320.20";
@@ -62,8 +65,8 @@ public sealed partial class AirPlayClient(AirPlayConnection connection)
 
     private string SessionUri => $"rtsp://{connection.LocalAddress}/{_sessionId}";
 
-    /// <summary>La verificación de HomeKit, para derivar las claves de eventos y datos; null en legacy.</summary>
-    public HomeKitPairVerify? HomeKit { get; private set; }
+    /// <summary>Las claves de HomeKit, para derivar las de eventos y datos; null en legacy.</summary>
+    public ISessionKeys? HomeKit { get; private set; }
 
     /// <exception cref="IOException">La TV no respondió con un plist.</exception>
     public async Task<ReceiverInfo> GetInfoAsync(CancellationToken ct = default)
@@ -74,6 +77,31 @@ public sealed partial class AirPlayClient(AirPlayConnection connection)
         if (BinaryPlistReader.Read(response.Body) is not Dictionary<string, object?> info)
             throw new IOException("GET /info: respuesta inesperada");
         return ReceiverInfo.Parse(info);
+    }
+
+    /// <summary>
+    /// Se identifica ante la TV: con sus credenciales o, si no las hay porque no pide PIN, con un
+    /// emparejamiento temporal (HomeKit) o sin nada (legacy).
+    /// </summary>
+    /// <exception cref="PairingException">La TV rechazó las credenciales.</exception>
+    public async Task AuthenticateAsync(AirPlayDevice device, Credentials? credentials, CancellationToken ct = default)
+    {
+        if (credentials is not null)
+            await VerifyAsync(credentials, ct);
+        else if (device.UsesHomeKit)
+            await PairTransientAsync(ct);
+    }
+
+    /// <summary>Emparejamiento temporal: cifra esta conexión sin guardar nada ni pedir PIN.</summary>
+    /// <exception cref="PairingException">La TV no lo admite: exige emparejar con PIN.</exception>
+    public async Task PairTransientAsync(CancellationToken ct = default)
+    {
+        var pairing = new HomeKitTransientPairing();
+        await PairRequestAsync("/pair-pin-start", null, TransientPairing, "application/octet-stream", ct);
+        byte[] message2 = await PairRequestAsync("/pair-setup", HomeKitTransientPairing.Message1(), TransientPairing, "application/octet-stream", ct);
+        pairing.Finish(await PairRequestAsync("/pair-setup", pairing.Message3(message2), TransientPairing, "application/octet-stream", ct));
+        connection.EnableEncryption(pairing.DeriveKey(ControlSalt, ControlWriteInfo), pairing.DeriveKey(ControlSalt, ControlReadInfo));
+        HomeKit = pairing;
     }
 
     /// <summary>Hace pair-verify y, con HomeKit, cifra la conexión.</summary>
@@ -177,20 +205,20 @@ public sealed partial class AirPlayClient(AirPlayConnection connection)
 
     /// <summary>Hace que la TV muestre el PIN de emparejamiento.</summary>
     public async Task ShowPinAsync(bool homeKit, CancellationToken ct = default) =>
-        await PairRequestAsync("/pair-pin-start", null, homeKit, "application/octet-stream", ct);
+        await PairRequestAsync("/pair-pin-start", null, homeKit ? RegularPairing : null, "application/octet-stream", ct);
 
     /// <summary>Paso de pair-setup de HomeKit: envía TLV8 y devuelve la respuesta.</summary>
     public Task<byte[]> PairSetupAsync(byte[] body, CancellationToken ct = default) =>
-        PairRequestAsync("/pair-setup", body, true, "application/octet-stream", ct);
+        PairRequestAsync("/pair-setup", body, RegularPairing, "application/octet-stream", ct);
 
     /// <summary>Paso de pair-setup legacy: envía un plist y devuelve la respuesta, si la hay.</summary>
     public async Task<Dictionary<string, object?>> PairSetupPinAsync(Dictionary<string, object?> body, CancellationToken ct = default)
     {
-        byte[] response = await PairRequestAsync("/pair-setup-pin", BinaryPlistWriter.Write(body), false, PlistContentType, ct);
+        byte[] response = await PairRequestAsync("/pair-setup-pin", BinaryPlistWriter.Write(body), null, PlistContentType, ct);
         return BinaryPlistReader.IsBinaryPlist(response) && BinaryPlistReader.Read(response) is Dictionary<string, object?> plist ? plist : [];
     }
 
-    private async Task<byte[]> PairRequestAsync(string path, byte[]? body, bool homeKit, string contentType, CancellationToken ct)
+    private async Task<byte[]> PairRequestAsync(string path, byte[]? body, string? homeKitVersion, string contentType, CancellationToken ct)
     {
         var headers = new List<KeyValuePair<string, string>>
         {
@@ -198,8 +226,8 @@ public sealed partial class AirPlayClient(AirPlayConnection connection)
             new("Connection", "keep-alive"),
             new("Content-Type", contentType),
         };
-        if (homeKit)
-            headers.Add(new("X-Apple-HKP", "3"));
+        if (homeKitVersion is not null)
+            headers.Add(new("X-Apple-HKP", homeKitVersion));
         AirPlayResponse response = await connection.SendAsync($"POST {path} HTTP/1.1", headers, body, ct);
         if (!response.IsSuccess)
             throw new PairingException($"La TV rechazó el emparejamiento: {response.Code} {response.Message}");

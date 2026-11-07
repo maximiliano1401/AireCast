@@ -20,7 +20,7 @@ internal sealed class DesktopPlatform : IMirrorPlatform
 
     public IDisposable BeginDiscovery() => new NoLock();
 
-    public async Task MirrorAsync(AirPlayDevice device, Credentials credentials, VideoOptions options, NetworkProfile network,
+    public async Task MirrorAsync(AirPlayDevice device, Credentials? credentials, VideoOptions options, NetworkProfile network,
         MirrorCallbacks callbacks, CancellationToken ct)
     {
         await using IScreenSource source = ScreenCapture.Create(options);

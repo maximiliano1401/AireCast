@@ -14,7 +14,7 @@ using Android.OS;
 namespace AireCast.Android;
 
 /// <summary>Un duplicado pedido por la interfaz: lo recoge el servicio, y <paramref name="Finished"/> avisa de cómo acabó.</summary>
-public sealed record MirrorRequest(AirPlayDevice Device, Credentials Credentials, VideoOptions Options, NetworkProfile Network,
+public sealed record MirrorRequest(AirPlayDevice Device, Credentials? Credentials, VideoOptions Options, NetworkProfile Network,
     MirrorCallbacks Callbacks, TaskCompletionSource Finished);
 
 /// <summary>
@@ -112,7 +112,7 @@ public sealed class MirrorService : Service
         VideoOptions options = request.Options;
         using AirPlayConnection connection = await AirPlayConnection.ConnectAsync(device.Address, device.Port, ct);
         var client = new AirPlayClient(connection) { AskCode = request.Callbacks.AskCode };
-        await client.VerifyAsync(request.Credentials, ct);
+        await client.AuthenticateAsync(device, request.Credentials, ct);
 
         var pcm = new PcmBuffer();
         await using MirrorSession session = await MirrorSession.StartAsync(client, pcm, network: request.Network, ct: ct);

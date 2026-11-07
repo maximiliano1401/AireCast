@@ -25,7 +25,7 @@ internal sealed class AndroidPlatform(Context context) : IMirrorPlatform
         return new Released(multicast.Release);
     }
 
-    public async Task MirrorAsync(AirPlayDevice device, Credentials credentials, VideoOptions options, NetworkProfile network,
+    public async Task MirrorAsync(AirPlayDevice device, Credentials? credentials, VideoOptions options, NetworkProfile network,
         MirrorCallbacks callbacks, CancellationToken ct)
     {
         MainActivity activity = MainActivity.Current ?? throw new IOException("La app no está en pantalla.");

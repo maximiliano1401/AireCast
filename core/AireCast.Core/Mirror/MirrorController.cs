@@ -28,10 +28,10 @@ public static class MirrorController
     /// </summary>
     /// <exception cref="IOException">Falló la red, la TV o el codificador.</exception>
     /// <exception cref="PairingException">La TV rechazó las credenciales.</exception>
-    public static async Task<long> RunAsync(AirPlayDevice device, Credentials credentials, IScreenSource source, string ffmpeg,
+    public static async Task<long> RunAsync(AirPlayDevice device, Credentials? credentials, IScreenSource source, string ffmpeg,
         MirrorCallbacks callbacks, bool withAudio = true, NetworkProfile? network = null, CancellationToken ct = default)
     {
-        if (credentials.Kind == PairingKind.Legacy && !source.Options.FitsLegacyReceiver)
+        if (!device.UsesHomeKit && !source.Options.FitsLegacyReceiver)
             throw new ArgumentException("Este Apple TV admite hasta 1080p: elige 720p o 1080p");
 
         // Primero la captura: en Wayland el escritorio puede pedir permiso, y la TV no debe esperar.
@@ -39,14 +39,14 @@ public static class MirrorController
 
         using AirPlayConnection connection = await AirPlayConnection.ConnectAsync(device.Address, device.Port, ct);
         var client = new AirPlayClient(connection) { AskCode = callbacks.AskCode };
-        await client.VerifyAsync(credentials, ct);
+        await client.AuthenticateAsync(device, credentials, ct);
 
         LinuxAudioCap.RestoreLeftovers();
         PcmBuffer? pcm = withAudio ? new PcmBuffer() : null;
         await using MirrorSession session = await MirrorSession.StartAsync(client, pcm, network: network, ct: ct);
         await using AudioCapture? capture = await StartAudioAsync(session, pcm, callbacks, ct);
         if (network is { AudioMarginMs: > 0 })
-            callbacks.Log?.Invoke(DescribeNetwork(credentials, session));
+            callbacks.Log?.Invoke(DescribeNetwork(device, session));
 
         System.Diagnostics.ProcessStartInfo encoder = source.Encoder(ffmpeg);
         callbacks.Log?.Invoke($"Duplicando en «{device.Name}» a {source.Options.Fps} fps con {source.Name}");
@@ -59,9 +59,9 @@ public static class MirrorController
     }
 
     /// <summary>Lo que hizo el perfil «inestable» en esta sesión, para el registro.</summary>
-    private static string DescribeNetwork(Credentials credentials, MirrorSession session)
+    private static string DescribeNetwork(AirPlayDevice device, MirrorSession session)
     {
-        if (credentials.Kind == PairingKind.Legacy)
+        if (!device.UsesHomeKit)
             return "Red inestable: sin efecto en este Apple TV, que ya lleva su propio ajuste";
         if (session.AudioLatency is not { } latency)
             return "Red inestable: sin audio, no hay nada que ajustar";
