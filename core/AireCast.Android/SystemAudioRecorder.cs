@@ -17,6 +17,20 @@ public sealed class SystemAudioRecorder : IDisposable
     private readonly CancellationToken _ct;
     private readonly Thread _thread;
 
+    /// <summary>Bytes capturados y el mayor nivel de sonido desde la última consulta, para el registro.</summary>
+    public long Bytes { get; private set; }
+
+    public int State => (int)_record.State;
+
+    public int ReadPeakAndReset()
+    {
+        int peak = _peak;
+        _peak = 0;
+        return peak;
+    }
+
+    private volatile int _peak;
+
     public SystemAudioRecorder(MediaProjection projection, PcmBuffer pcm, CancellationToken ct)
     {
         _pcm = pcm;
@@ -47,8 +61,12 @@ public sealed class SystemAudioRecorder : IDisposable
         while (!_ct.IsCancellationRequested)
         {
             int read = _record.Read(buffer, 0, buffer.Length);
-            if (read > 0)
-                _pcm.Write(buffer.AsSpan(0, read));
+            if (read <= 0)
+                continue;
+            _pcm.Write(buffer.AsSpan(0, read));
+            Bytes += read;
+            for (int i = 0; i + 1 < read; i += 64)
+                _peak = Math.Max(_peak, Math.Abs((int)BitConverter.ToInt16(buffer, i)));
         }
     }
 

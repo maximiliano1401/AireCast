@@ -94,8 +94,16 @@ public sealed class MirrorService : Service
             using var encoder = new ScreenEncoder(projection, Width, Height, density, Fps, Bitrate, session, ct);
             MirrorBridge.Status?.Invoke($"Compartiendo la pantalla en «{device.Name}».");
 
+            global::Android.Util.Log.Info("AireCast", $"audio aceptado por la TV: {session.HasAudio}, estado del grabador: {audio?.State}");
+            long lastFrames = 0, lastBytes = 0;
             while (!ct.IsCancellationRequested && encoder.Failure is null)
-                await Task.Delay(500, CancellationToken.None);
+            {
+                await Task.Delay(2000, CancellationToken.None);
+                global::Android.Util.Log.Info("AireCast",
+                    $"vídeo {(encoder.Frames - lastFrames) / 2.0:F1} fps; audio {((audio?.Bytes ?? 0) - lastBytes) / 2} B/s, pico {audio?.ReadPeakAndReset()}, reenviados {session.ResentAudioPackets}");
+                lastFrames = encoder.Frames;
+                lastBytes = audio?.Bytes ?? 0;
+            }
             if (encoder.Failure is { } failure)
                 throw new IOException(failure.Message);
             result = $"Transmisión detenida: {encoder.Frames} fotogramas.";
