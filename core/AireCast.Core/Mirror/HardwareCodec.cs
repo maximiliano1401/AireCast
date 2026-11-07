@@ -62,7 +62,6 @@ public sealed record EncoderChoice(string Ffmpeg, HardwareCodec? Hardware)
 /// <summary>Elige el codificador probándolos: que FFmpeg lo incluya no significa que este equipo lo tenga.</summary>
 public static class EncoderSelector
 {
-    private const string SystemFfmpeg = "ffmpeg";
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(8);
     private static readonly VideoOptions ProbeOptions = new(640, 360, 30);
     private static readonly string[] ProbeInput = ["-f", "lavfi", "-i", "color=black:size=640x360:rate=30", "-frames:v", "5"];
@@ -86,7 +85,8 @@ public static class EncoderSelector
 
     private static EncoderChoice Find(string ffmpeg)
     {
-        foreach (string candidate in new[] { ffmpeg, SystemFfmpeg }.Distinct())
+        string?[] candidates = [ffmpeg, FindOnPath(Environment.GetEnvironmentVariable("PATH"), AppContext.BaseDirectory)];
+        foreach (string candidate in candidates.OfType<string>().Distinct())
         {
             foreach (HardwareCodec codec in HardwareCodec.Candidates())
             {
@@ -95,6 +95,20 @@ public static class EncoderSelector
             }
         }
         return new EncoderChoice(ffmpeg, null);
+    }
+
+    /// <summary>
+    /// El FFmpeg del sistema. Hay que buscarlo a mano: con un nombre sin ruta, .NET mira antes en la carpeta
+    /// de la app y encontraría otra vez el FFmpeg incluido.
+    /// </summary>
+    public static string? FindOnPath(string? path, string appFolder)
+    {
+        string name = OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg";
+        string app = Path.TrimEndingDirectorySeparator(appFolder);
+        return (path ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+            .Where(folder => Path.TrimEndingDirectorySeparator(folder) != app)
+            .Select(folder => Path.Combine(folder, name))
+            .FirstOrDefault(File.Exists);
     }
 
     /// <summary>Codifica unos fotogramas y comprueba que salen con lo que necesita el troceo: AUD y SPS.</summary>

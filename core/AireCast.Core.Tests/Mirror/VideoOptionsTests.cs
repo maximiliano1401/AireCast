@@ -100,6 +100,23 @@ public class VideoOptionsTests
     }
 
     [Fact]
+    public void TheSystemFfmpegIsNotTheOneNextToTheApp()
+    {
+        string root = Directory.CreateTempSubdirectory().FullName;
+        string app = Directory.CreateDirectory(Path.Combine(root, "app")).FullName;
+        string system = Directory.CreateDirectory(Path.Combine(root, "bin")).FullName;
+        string name = OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg";
+        File.WriteAllText(Path.Combine(app, name), "");
+        File.WriteAllText(Path.Combine(system, name), "");
+
+        string? found = EncoderSelector.FindOnPath(string.Join(Path.PathSeparator, app, system), app + Path.DirectorySeparatorChar);
+
+        Assert.Equal(Path.Combine(system, name), found);
+        Assert.Null(EncoderSelector.FindOnPath(app, app));
+        Directory.Delete(root, true);
+    }
+
+    [Fact]
     public void ReadsPrimaryMonitor()
     {
         const string Xrandr = "HDMI-1 connected 1920x1080+1366+0 (normal)\neDP-1 connected primary 1366x768+0+0 (normal)\n";
